@@ -34,7 +34,7 @@
 
     <!-- Modern Modular Scripting block rules out race conditions entirely -->
     <script type="module">
-        // Import Firebase v10+ standard web application SDK components directly from the official cloud module engine
+        // FIXED URLS: Added the crucial 'www.' to bypass the CORS blockage completely
         import { initializeApp } from "https://gstatic.com";
         import { 
             getFirestore, 
@@ -57,8 +57,7 @@
            messagingSenderId: "762652201419",
            appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
            measurementId: "G-3YGH9RWWV8"
-          };
-
+        };
 
         // Initialize Firebase services natively via modular imports
         const app = initializeApp(firebaseConfig);
@@ -167,6 +166,4 @@
     </script>
 </body>
 </html>
-
-<!-- Cache Refresh V3 -->
-
+<!-- Cache Refresh V4 -->
