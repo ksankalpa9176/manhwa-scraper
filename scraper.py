@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import json
 import requests
 from bs4 import BeautifulSoup
 import firebase_admin
@@ -9,19 +10,36 @@ from firebase_admin import credentials, firestore
 # ==========================================
 # 1. CONNECT TO YOUR FIREBASE FIRESTORE DATABASE
 # ==========================================
-# Make sure your 'firebase-key.json' file is in the same folder as this script.
-# (Download it from Firebase Console -> Project Settings -> Service Accounts -> Generate new private key)
-KEY_PATH = "firebase-key.json"
-
-if not os.path.exists(KEY_PATH):
-    print(f"⚠️ Warning: '{KEY_PATH}' not found!")
-    print("Please place your downloaded Firebase Service Account JSON key as 'firebase-key.json' in this directory.")
+# Supports both:
+# A) Direct environment variable FIREBASE_JSON_SECRET (useful in GitHub Actions)
+# B) Local file 'firebase-key.json' in the same directory
+KEY_PATH = os.environ.get("FIREBASE_KEY_PATH", "firebase-key.json")
+env_secret = os.environ.get("FIREBASE_JSON_SECRET") or os.environ.get("FIREBASE_KEY")
 
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate(KEY_PATH)
-        firebase_admin.initialize_app(cred)
-        print(" Connected to Firebase successfully!")
+        if env_secret and env_secret.strip():
+            # If passed as stringified JSON secret
+            try:
+                cert_dict = json.loads(env_secret.strip())
+                cred = credentials.Certificate(cert_dict)
+                firebase_admin.initialize_app(cred)
+                print(" Connected to Firebase via FIREBASE_JSON_SECRET environment variable!")
+            except json.JSONDecodeError:
+                # If path or malformed
+                if os.path.exists(env_secret.strip()):
+                    cred = credentials.Certificate(env_secret.strip())
+                    firebase_admin.initialize_app(cred)
+                else:
+                    raise
+        elif os.path.exists(KEY_PATH):
+            cred = credentials.Certificate(KEY_PATH)
+            firebase_admin.initialize_app(cred)
+            print(" Connected to Firebase successfully using local key file!")
+        else:
+            print(f"⚠️ Warning: Neither '{KEY_PATH}' nor FIREBASE_JSON_SECRET environment variable was found!")
+            print("Please place your downloaded Firebase Service Account JSON key as 'firebase-key.json' or set the secret.")
+            exit(1)
     except Exception as e:
         print(f"❌ Could not initialize Firebase: {e}")
         exit(1)
@@ -103,6 +121,41 @@ def extract_chapter_number(text):
     return 999.0
 
 
+def fetch_arenascan_cover(title, series_url=None):
+    """
+    Fetches the authentic official cover image from ArenaScan's series page.
+    Example: https://arenascan.com/manga/the-extras-academy-survival-guide/
+    """
+    slug = None
+    if series_url and "arenascan.com" in series_url:
+        m = re.search(r'/manga/([^/]+)/?', series_url)
+        if m:
+            slug = m.group(1).strip("-")
+    if not slug:
+        slug = to_arenascan_slug(title)
+
+    page_url = f"https://arenascan.com/manga/{slug}/"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    }
+    try:
+        r = requests.get(page_url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            # Look for the primary series cover image on the page
+            img = soup.select_one('img[itemprop="image"], .thumb img, img.wp-post-image, .infox img')
+            if img:
+                src = img.get('src') or img.get('data-src') or img.get('data-lazy-src') or ''
+                if src.startswith('/'):
+                    src = 'https://arenascan.com' + src
+                if src.startswith('http'):
+                    return src
+    except Exception as e:
+        pass
+    return ""
+
+
 def run_scraper():
     print("\n Connecting to ArenaScan Feed...")
 
@@ -120,6 +173,21 @@ def run_scraper():
         my_watchlist[normalize_title(title)] = (doc.id, data)
 
     print(f" Tracking {len(my_watchlist)} titles in your reading watchlist.")
+
+    # ------------------------------------------------------------------
+    # SYNC COVERS: Replace any missing or placeholder covers with ArenaScan covers
+    # ------------------------------------------------------------------
+    for norm_t, (doc_id, w_data) in my_watchlist.items():
+        curr_cover = w_data.get('cover_url', '')
+        raw_t = w_data.get('title', '')
+        # If missing, empty, relative, or contains unsplash placeholder
+        if not curr_cover or 'unsplash.com' in curr_cover or curr_cover.startswith('/'):
+            print(f"🖼️ Fetching authentic ArenaScan cover for '{raw_t}'...")
+            real_cover = fetch_arenascan_cover(raw_t, w_data.get('series_url'))
+            if real_cover:
+                watchlist_ref.document(doc_id).update({'cover_url': real_cover})
+                w_data['cover_url'] = real_cover
+                print(f"   ✓ Saved ArenaScan cover: {real_cover}")
 
     # Load existing discoveries so we don't notify twice for the same discovery
     discoveries_ref = db.collection('discoveries')
@@ -202,6 +270,8 @@ def run_scraper():
                     img_el.get('src') or 
                     ""
                 )
+                if cover_url.startswith('/'):
+                    cover_url = base_url + cover_url
 
             # ==========================================
             # 4. ROUTE 1: TITLE IS IN YOUR WATCHLIST
@@ -217,6 +287,13 @@ def run_scraper():
                     watchlist_ref.document(w_doc_id).update({'latest_chapter_url': repaired_url})
                     w_data['latest_chapter_url'] = repaired_url
                     print(f"🔧 Repaired chapter URL for '{raw_title}' in Firestore ➜ {repaired_url}")
+
+                # Auto-heal/sync missing or unsplash cover with real ArenaScan cover
+                stored_cover = w_data.get('cover_url', '')
+                if cover_url and (not stored_cover or 'unsplash.com' in stored_cover or stored_cover.startswith('/')):
+                    watchlist_ref.document(w_doc_id).update({'cover_url': cover_url})
+                    w_data['cover_url'] = cover_url
+                    print(f"🖼️ Synced official ArenaScan cover for '{raw_title}'")
 
                 # Check if a new chapter released
                 if chapter_num > last_known_chapter:
@@ -249,13 +326,15 @@ def run_scraper():
                     print(f"   Chapter: {chapter_text}")
                     print(f"   Link: {chapter_url}")
 
+                    disc_cover = cover_url or fetch_arenascan_cover(raw_title, series_url)
+
                     # Store in separate 'discoveries' collection in Firebase
                     discoveries_ref.document(doc_id).set({
                         'title': raw_title,
                         'latest_chapter': chapter_num,
                         'latest_chapter_text': chapter_text,
                         'latest_chapter_url': chapter_url,
-                        'cover_url': cover_url,
+                        'cover_url': disc_cover,
                         'notified': True,
                         'created_at': firestore.SERVER_TIMESTAMP
                     })
