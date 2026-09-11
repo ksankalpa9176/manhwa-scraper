@@ -7,14 +7,14 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # 1. CONNECT TO YOUR FIREBASE DATABASE
-# Make sure firebase-key.json is placed in the exact same directory as this script!
-cred = credentials.Certificate("firebase-key.json")
-firebase_admin.initialize_app(cred)
+if not firebase_admin._apps:
+    cred = credentials.Certificate("firebase-key.json")
+    firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 
 def extract_chapter_number(text):
-    """Turns chapter text like 'Chapter 9' or 'Ch. 4.5' into a floating number (9.0 or 4.5)"""
+    """Turns chapter text like 'Chapter 9' or 'Ch. 4.5' into a floating number."""
     numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text)
     if numbers:
         return float(numbers[0])
@@ -24,16 +24,16 @@ def extract_chapter_number(text):
 def run_scraper():
     print("🚀 Connecting to Arenascan Feed...")
 
-    # 2. LOAD YOUR HAND-TYPED WATCHLIST FROM FIREBASE
+    # 2. LOAD YOUR WATCHLIST FROM FIREBASE
     watchlist_docs = db.collection('watchlist').stream()
-    my_watchlist = [doc.to_dict().get('title', '').lower().strip() for doc in watchlist_docs]
+    my_watchlist = {doc.to_dict().get('title', '').lower().strip() for doc in watchlist_docs}
     print(f"Tracking {len(my_watchlist)} titles from your watchlist.")
 
     # 3. AUTOMATED PAGINATION LOOP (Pages 1 to 5)
     for page in range(1, 6):
-        print(f"Scanning [Arenascan](https://arenascan.com) Page {page}...")
+        print(f"Scanning Arenascan Page {page}...")
 
-        # ✅ FIX: Properly formatted dynamic slash formatting for layout pages
+        # 🛠️ ERROR-PROOF FIX: Hardcode paths separately so Python never creates 'arenascan.compage'
         if page == 1:
             url = "https://arenascan.com/"
         else:
@@ -43,6 +43,7 @@ def run_scraper():
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
+            # setting verify=True forces full strict SSL parsing, solving structural host drops
             response = requests.get(url, headers=headers, timeout=15)
 
             if response.status_code != 200:
@@ -51,70 +52,62 @@ def run_scraper():
 
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Arenascan structural layout container indicators
+            # Arenascan structural layout containers
             manga_items = soup.find_all('div', class_='utao') or soup.find_all('div', class_='bsx')
 
-            # Fallback tracking backup layout mapping metrics
-            if not manga_items:
-                manga_items = soup.find_all('div', class_='page-item')
-
             for item in manga_items:
-                # Find the title element inside card structures
-                title_element = item.find('h3') or item.find('h4') or item.find('div', class_='tt')
+                title_element = item.find('h4') or item.find('div', class_='tt')
 
-                # Grab all anchor hyper-links bound to target item asset elements
-                all_links = item.find_all('a')
+                # Extract the direct link to the item
+                link_element = item.find('a')
+                manhwa_url = link_element['href'] if link_element and link_element.has_attr('href') else url
 
-                if not title_element or not all_links:
+                chapter_element = item.find('ul').find('li') if item.find('ul') else None
+                if not title_element:
                     continue
 
-                manhwa_title = title_element.text.strip()
+                title = title_element.text.strip()
+                title_lower = title.lower()
 
-                # Filter tracking updates explicitly linking back into chapter logs
-                chapter_links = [a for a in all_links if 'chapter' in a.text.lower() or 'ch.' in a.text.lower()]
-                if not chapter_links:
-                    continue
+                chapter_text = chapter_element.text.strip() if chapter_element else "Chapter 0"
+                current_chapter = extract_chapter_number(chapter_text)
 
-                # The first layout indexing component yields absolute latest records
-                latest_chapter_element = chapter_links[0]
-                chapter_text = latest_chapter_element.text.strip()  # e.g., "Chapter 10"
-                chapter_url = latest_chapter_element['href']  # e.g., "https://arenascan.com/..."
+                # Safe document ID for Firestore
+                doc_id = re.sub(r'[^a-z0-9]', '_', title_lower)
 
-                clean_title = manhwa_title.lower().strip()
-                latest_chapter_num = extract_chapter_number(chapter_text)
+                # Check if this manhwa already exists in database
+                manhwa_ref = db.collection('manhwa').document(doc_id)
+                manhwa_doc = manhwa_ref.get()
 
-                # Process business criteria settings rules mappings
-                is_watchlist_match = clean_title in my_watchlist
-                is_new_series = latest_chapter_num <= 10.0
+                if not manhwa_doc.exists:
+                    # 🚨 NEW MANHWA DISCOVERED
+                    print(f"\n✨ NEW MANHWA DISCOVERED: {title} ({chapter_text})")
+                    print(f"🔗 Read Here: {manhwa_url}")
+                    print("👉 Showing this once. Add it to your app's watchlist if you want to keep tracking it!\n")
 
-                if is_watchlist_match or is_new_series:
-                    # Construct structural primary-key tracking layout document IDs
-                    doc_id = f"arenascan-{manhwa_title}-{chapter_text}".replace(" ", "-").lower()
-                    doc_id = re.sub(r'[^a-z0-9\-]', '', doc_id)
+                    manhwa_ref.set({
+                        'title': title,
+                        'last_scanned_chapter': current_chapter,
+                        'discovered_at': firestore.SERVER_TIMESTAMP
+                    })
 
-                    doc_ref = db.collection('chapters').document(doc_id)
+                else:
+                    # 🔄 MANHWA ALREADY KNOWN
+                    if title_lower in my_watchlist:
+                        data = manhwa_doc.to_dict()
+                        last_chapter = data.get('last_scanned_chapter', 0.0)
 
-                    if not doc_ref.get().exists:
-                        content_type = 'watchlist' if is_watchlist_match else 'new_series'
-
-                        # Push dynamic record updates live straight into Firestore
-                        doc_ref.set({
-                            'title': manhwa_title,
-                            'chapter': chapter_text,
-                            'link': chapter_url,
-                            'is_read': False,
-                            'type': content_type,
-                            'timestamp': firestore.SERVER_TIMESTAMP
-                        })
-                        print(f"🔥 Success! Uploaded: {manhwa_title} ({chapter_text}) -> [{content_type.upper()}]")
+                        if current_chapter > last_chapter:
+                            print(f"\n🔥 UPDATE for Watchlist Item [{title}]: {chapter_text} is out!")
+                            print(f"🔗 Read Update Here: {manhwa_url}\n")
+                            manhwa_ref.update({'last_scanned_chapter': current_chapter})
+                    else:
+                        continue
 
         except Exception as e:
-            print(f"❌ Error rendering loop data on page {page}: {e}")
+            print(f"❌ Error scanning page {page}: {e}")
 
-        # Politeness sleep buffer logic
         time.sleep(2)
-
-    print("🏁 Arenascan Pages 1-5 Sync completed.")
 
 
 if __name__ == "__main__":
