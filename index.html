@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manhwa Tracker Dashboard</title>
     
-    <!-- Link to your separate CSS file -->
+    <!-- Link to your separate clean CSS file -->
     <link rel="stylesheet" href="style.css">
     
     <!-- Safe Favicon Fallback to clear console error noise -->
@@ -22,7 +22,7 @@
             <button id="trackBtn">Track Title</button>
         </div>
 
-        <!-- Double Column Data Grid Template -->
+        <!-- Double Column Data Feed Grid -->
         <div class="layout-grid">
             <div class="column-card">
                 <div class="column-heading">My Feed (Watchlist Items)</div>
@@ -35,35 +35,41 @@
         </div>
     </div>
 
-    <!-- Script loading fallback architecture to break network blocks safely -->
+    <!-- Fallproof Loader Core Scripts Script -->
     <script>
         (function() {
-            var s1 = document.createElement('script');
-            s1.src = "https://gstatic.com";
-            s1.onload = function() {
-                var s2 = document.createElement('script');
-                s2.src = "https://gstatic.com";
-                s2.onload = startTrackerEngine;
-                document.head.appendChild(s2);
+            var gApp = document.createElement('script');
+            gApp.src = "https://gstatic.com";
+            gApp.crossOrigin = "anonymous";
+            
+            gApp.onload = function() {
+                var gStore = document.createElement('script');
+                gStore.src = "https://gstatic.com";
+                gStore.crossOrigin = "anonymous";
+                gStore.onload = startTrackerEngine;
+                document.head.appendChild(gStore);
             };
-            s1.onerror = function() {
-                var f1 = document.createElement('script');
-                f1.src = "https://cloudflare.com";
-                f1.onload = function() {
-                    var f2 = document.createElement('script');
-                    f2.src = "https://cloudflare.com";
-                    f2.onload = startTrackerEngine;
-                    document.head.appendChild(f2);
+            
+            gApp.onerror = function() {
+                console.log("⚠️ Gstatic route blocked. Activating alternative fallback engine pipelines...");
+                var cApp = document.createElement('script');
+                cApp.src = "https://jsdelivr.net";
+                cApp.onload = function() {
+                    var cStore = document.createElement('script');
+                    cStore.src = "https://jsdelivr.net";
+                    cStore.onload = startTrackerEngine;
+                    document.head.appendChild(cStore);
                 };
-                document.head.appendChild(f1);
+                document.head.appendChild(cApp);
             };
-            document.head.appendChild(s1);
+            
+            document.head.appendChild(gApp);
         })();
 
         function startTrackerEngine() {
             console.log("✅ Core database libraries loaded successfully!");
             
-            // Your absolute exact database keys natively loaded
+            // Your exact configuration parameters applied natively
             const firebaseConfig = {
                 apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
                 authDomain: "://firebaseapp.com",
@@ -74,13 +80,10 @@
                 measurementId: "G-3YGH9RWWV8"
             };
 
-            // Initialize Firebase App instance safely
             firebase.initializeApp(firebaseConfig);
             const firestoreDb = firebase.firestore();
-
             let activeWatchlistSet = new Set();
 
-            // === ACTION 1: SUBMIT AND WRITE INPUT VALUE STRINGS INTO THE WATCHLIST COLLECTION ===
             async function saveWatchlistEntry() {
                 const inputField = document.getElementById('manhwaTitleField');
                 const titleValue = inputField.value.trim();
@@ -102,7 +105,6 @@
 
             document.getElementById('trackBtn').addEventListener('click', saveWatchlistEntry);
 
-            // === ACTION 2: REAL-TIME CROSS-REFERENCE DATA ENGINE ===
             firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
                 activeWatchlistSet.clear();
                 watchlistSnapshot.forEach((doc) => {
@@ -177,3 +179,4 @@
     </script>
 </body>
 </html>
+<!-- Cache Override Flush V9 -->
