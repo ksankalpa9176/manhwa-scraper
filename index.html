@@ -37,23 +37,33 @@
     </div>
 
     <script>
-        // Safety hook ensures code triggers only when browser parses document layout blocks
-        document.addEventListener('DOMContentLoaded', () => {
+        // BULLETPROOF ENFORCED LOOPER ENGINE: Eliminates race condition dropouts permanently
+        function checkFirebaseAvailability() {
+            if (typeof firebase !== 'undefined') {
+                console.log("✅ Firebase Engine verified active! Bootstrapping layout channels...");
+                initializeTrackerDashboard();
+            } else {
+                console.log("⏳ Core libraries downloading... Retrying connection frame...");
+                // Checks again in 50 milliseconds without locking up the user interface canvas
+                setTimeout(checkFirebaseAvailability, 50);
+            }
+        }
 
+        function initializeTrackerDashboard() {
             // =========================================================================
             // 🛠️ CONFIGURATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
             // =========================================================================
-           const firebaseConfig = {
-                 apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-                 authDomain: "manhwa-tracker-be510.firebaseapp.com",
-                 projectId: "manhwa-tracker-be510",
-                 storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-                 messagingSenderId: "762652201419",
-                 appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-                 measurementId: "G-3YGH9RWWV8"
+            const firebaseConfig = {
+               apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
+               authDomain: "manhwa-tracker-be510.firebaseapp.com",
+               projectId: "manhwa-tracker-be510",
+               storageBucket: "manhwa-tracker-be510.firebasestorage.app",
+               messagingSenderId: "762652201419",
+               appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
+               measurementId: "G-3YGH9RWWV8"
             };
 
-            // Initialize global configuration components securely
+            // Initialize global configuration components securely now that availability is verified
             firebase.initializeApp(firebaseConfig);
             const firestoreDb = firebase.firestore();
 
@@ -80,7 +90,7 @@
                 }
             }
 
-            // Bind click event trigger elements listeners directly to document nodes
+            // Bind click event trigger elements listeners directly to document nodes safely
             document.getElementById('trackBtn').addEventListener('click', saveWatchlistEntry);
 
             // === ACTION 2: REAL-TIME CROSS-REFERENCE DATA ENGINE LINKED TO YOUR PYTHON LABELS ===
@@ -157,8 +167,11 @@
                         console.error("Manhwa core tracking nodes collection stream fault: ", error);
                     });
             }
-        });
+        }
+
+        // Initialize verification check sequence immediately on runtime load
+        checkFirebaseAvailability();
     </script>
 </body>
 </html>
-<!-- Cache Refresh V5 -->
+<!-- Cache Override Engine Hook V6 -->
