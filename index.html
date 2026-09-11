@@ -47,6 +47,14 @@
       const modal = document.getElementById('diag-modal');
       if (modal) modal.classList.add('hidden');
     };
+    window.openScraperModal = function() {
+      const modal = document.getElementById('scraper-modal');
+      if (modal) modal.classList.remove('hidden');
+    };
+    window.closeScraperModal = function() {
+      const modal = document.getElementById('scraper-modal');
+      if (modal) modal.classList.add('hidden');
+    };
   </script>
 
   <!-- Firebase Web SDK (Vanilla JavaScript ES Modules) -->
@@ -78,7 +86,6 @@
       appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
       measurementId: "G-3YGH9RWWV8"
     };
-
 
     // Resolve whichever configuration variable exists safely
     let resolvedConfig = null;
@@ -233,12 +240,32 @@
         {
           id: "the_extras_academy_survival_guide",
           title: "The Extra's Academy Survival Guide",
-          cover_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop&q=80",
+          cover_url: "https://arenascan.com/wp-content/uploads/2025/06/d1094d2a-111c-436d-9157-51f4385d5dab.jpg",
           latest_chapter: 123,
           latest_chapter_text: "Chapter 123",
           latest_chapter_url: "https://arenascan.com/the-extras-academy-survival-guide-chapter-123/",
           last_read_chapter: 123,
           has_unread: false
+        },
+        {
+          id: "murim_login",
+          title: "Murim Login",
+          cover_url: "https://arenascan.com/wp-content/uploads/2025/07/ab75bf46-750d-432b-96a8-47a5f0fd6a36.webp",
+          latest_chapter: 184,
+          latest_chapter_text: "Chapter 184",
+          latest_chapter_url: "https://arenascan.com/murim-login-chapter-184/",
+          last_read_chapter: 183,
+          has_unread: true
+        },
+        {
+          id: "solo_leveling_ragnarok",
+          title: "Solo Leveling: Ragnarok",
+          cover_url: "https://arenascan.com/wp-content/uploads/2025/01/rag.avif",
+          latest_chapter: 35,
+          latest_chapter_text: "Chapter 35",
+          latest_chapter_url: "https://arenascan.com/solo-leveling-ragnarok-chapter-35/",
+          last_read_chapter: 34,
+          has_unread: true
         }
       ];
       renderAll();
@@ -312,9 +339,18 @@
         return `
           <div class="bg-stone-900/90 border ${isUnread ? 'border-red-600/80 ring-1 ring-red-600/30 shadow-lg shadow-red-950/20' : 'border-stone-800'} rounded-2xl p-4 flex flex-col justify-between transition hover:border-stone-700">
             <div class="flex gap-3.5">
-              <img src="${item.cover_url || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop&q=80'}" 
-                   class="w-20 h-28 object-cover rounded-xl bg-stone-950 flex-shrink-0 shadow border border-stone-800" 
-                   alt="${item.title}" onerror="this.src='https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400'" />
+              <div class="relative w-20 h-28 flex-shrink-0 group">
+                <img src="${item.cover_url || 'https://arenascan.com/wp-content/uploads/2025/06/d1094d2a-111c-436d-9157-51f4385d5dab.jpg'}" 
+                     referrerpolicy="no-referrer"
+                     class="w-full h-full object-cover rounded-xl bg-stone-950 shadow border border-stone-800" 
+                     alt="${item.title}" 
+                     onerror="this.onerror=null; this.src='https://arenascan.com/wp-content/uploads/2025/06/d1094d2a-111c-436d-9157-51f4385d5dab.jpg';" />
+                <button onclick="window.editCoverUrl('${item.id}')" 
+                        class="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/80 hover:bg-black text-[10px] text-stone-300 hover:text-white rounded backdrop-blur border border-stone-700 opacity-80 hover:opacity-100 transition shadow"
+                        title="Set/Update ArenaScan Cover Image">
+                  🖼️
+                </button>
+              </div>
               
               <div class="flex-1 min-w-0">
                 <div class="flex items-start justify-between gap-1.5">
@@ -381,8 +417,11 @@
         const previewUrl = getCleanArenaUrl(item.latest_chapter_url, item.title, item.latest_chapter);
         return `
           <div class="bg-stone-900 border border-amber-900/40 rounded-xl p-3 flex gap-3">
-            <img src="${item.cover_url || 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=400&auto=format&fit=crop&q=80'}" 
-                 class="w-16 h-24 object-cover rounded-lg bg-stone-950 flex-shrink-0" alt="${item.title}" />
+            <img src="${item.cover_url || 'https://arenascan.com/wp-content/uploads/2025/06/57f5b4f4-4229-4f31-8647-e1f4465b2528.jpg'}" 
+                 referrerpolicy="no-referrer"
+                 class="w-16 h-24 object-cover rounded-lg bg-stone-950 flex-shrink-0 shadow border border-stone-800" 
+                 alt="${item.title}" 
+                 onerror="this.onerror=null; this.src='https://arenascan.com/wp-content/uploads/2025/06/57f5b4f4-4229-4f31-8647-e1f4465b2528.jpg';" />
             <div class="flex-1 flex flex-col justify-between min-w-0">
               <div>
                 <h4 class="font-bold text-xs text-stone-100 truncate">${item.title}</h4>
@@ -536,6 +575,26 @@
       }
     };
 
+    // 5b. Update Cover Image URL
+    window.editCoverUrl = async function(id) {
+      const item = watchlistData.find(w => w.id === id);
+      if (!item) return;
+      const current = item.cover_url || '';
+      const newUrl = prompt(`Enter ArenaScan Cover Image URL for "${item.title}":\n(e.g. https://arenascan.com/wp-content/uploads/...jpg)`, current);
+      if (newUrl === null) return;
+      const trimmed = newUrl.trim();
+      if (db) {
+        try {
+          await updateDoc(doc(db, "watchlist", id), { cover_url: trimmed });
+        } catch (e) {
+          alert("Firebase update error: " + e.message);
+        }
+      } else {
+        item.cover_url = trimmed;
+        renderAll();
+      }
+    };
+
     // 6. Move Discovery to Watchlist
     window.addDiscoveryToWatchlist = async function(id) {
       const disc = discoveriesData.find(d => d.id === id);
@@ -615,6 +674,7 @@
       const title = document.getElementById('new-title').value.trim();
       const ch = parseFloat(document.getElementById('new-chapter').value) || 1;
       const url = document.getElementById('new-url').value.trim();
+      const cover = document.getElementById('new-cover')?.value.trim() || '';
       if (!title) return;
 
       const docId = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -631,7 +691,7 @@
             latest_chapter: ch,
             latest_chapter_text: "Chapter " + ch,
             latest_chapter_url: validUrl,
-            cover_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop&q=80",
+            cover_url: cover,
             last_read_chapter: ch,
             has_unread: false,
             created_at: serverTimestamp()
@@ -646,7 +706,7 @@
           latest_chapter: ch,
           latest_chapter_text: "Chapter " + ch,
           latest_chapter_url: validUrl,
-          cover_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop&q=80",
+          cover_url: cover,
           last_read_chapter: ch,
           has_unread: false
         });
@@ -658,6 +718,9 @@
       document.getElementById('new-title').value = '';
       document.getElementById('new-chapter').value = '1';
       document.getElementById('new-url').value = '';
+      if (document.getElementById('new-cover')) {
+        document.getElementById('new-cover').value = '';
+      }
     });
 
     // =========================================================================
@@ -783,6 +846,201 @@
     window.closeConfigModal = function() {
       document.getElementById('config-modal').classList.add('hidden');
     };
+
+    // =========================================================================
+    // 11. MANUAL SCRAPER TRIGGER (GitHub Actions API & Local Trigger)
+    // =========================================================================
+    let pollInterval = null;
+
+    window.openScraperModal = function() {
+      const repo = localStorage.getItem('arenascan_github_repo') || '';
+      const pat = localStorage.getItem('arenascan_github_pat') || '';
+      const repoInput = document.getElementById('gh-repo-input');
+      const patInput = document.getElementById('gh-pat-input');
+      if (repoInput) repoInput.value = repo;
+      if (patInput) patInput.value = pat;
+      document.getElementById('scraper-modal').classList.remove('hidden');
+      window.updateGhActionsQuickLink();
+    };
+
+    window.closeScraperModal = function() {
+      document.getElementById('scraper-modal').classList.add('hidden');
+    };
+
+    window.updateGhActionsQuickLink = function() {
+      const repo = (document.getElementById('gh-repo-input')?.value || localStorage.getItem('arenascan_github_repo') || '').trim();
+      const linkEl = document.getElementById('gh-direct-link');
+      if (linkEl) {
+        if (repo && repo.includes('/')) {
+          linkEl.href = `https://github.com/${repo}/actions/workflows/scraper.yml`;
+          linkEl.classList.remove('hidden');
+        } else {
+          linkEl.href = '#';
+          linkEl.classList.add('hidden');
+        }
+      }
+    };
+
+    window.triggerGitHubScraper = async function() {
+      const repoInput = document.getElementById('gh-repo-input');
+      const patInput = document.getElementById('gh-pat-input');
+      const repo = (repoInput?.value || '').trim();
+      const pat = (patInput?.value || '').trim();
+      const statusBox = document.getElementById('scraper-run-status');
+      const triggerBtn = document.getElementById('btn-trigger-gh-scraper');
+
+      if (!repo || !repo.includes('/')) {
+        alert('Please enter your GitHub Repository in format: username/repository (e.g. overokilldark/arenascan-tracker)');
+        repoInput?.focus();
+        return;
+      }
+      if (!pat) {
+        alert('Please enter your GitHub Personal Access Token (PAT) with "workflow" or "actions:write" permission.');
+        patInput?.focus();
+        return;
+      }
+
+      localStorage.setItem('arenascan_github_repo', repo);
+      localStorage.setItem('arenascan_github_pat', pat);
+      window.updateGhActionsQuickLink();
+
+      if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.innerHTML = `<span>⏳ Dispatching...</span>`;
+      }
+
+      statusBox.classList.remove('hidden');
+      statusBox.innerHTML = `
+        <div class="p-3 bg-stone-950 border border-stone-800 rounded-xl space-y-2 text-xs">
+          <div class="flex items-center gap-2 text-amber-400 font-bold">
+            <span class="animate-spin">⚙️</span>
+            <span>Sending workflow_dispatch trigger to GitHub...</span>
+          </div>
+          <p class="text-stone-400 text-[11px]">Connecting to https://api.github.com/repos/${repo}/actions/workflows/scraper.yml/dispatches</p>
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/scraper.yml/dispatches`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'Authorization': `Bearer ${pat}`
+          },
+          body: JSON.stringify({ ref: 'main' })
+        });
+
+        if (res.status === 204 || res.ok) {
+          statusBox.innerHTML = `
+            <div class="p-3.5 bg-emerald-950/40 border border-emerald-800/80 rounded-xl space-y-2 text-xs">
+              <div class="flex items-center gap-2 text-emerald-400 font-bold">
+                <span>🚀 Workflow Dispatched Successfully!</span>
+              </div>
+              <p class="text-stone-300 text-[11px] leading-relaxed">
+                GitHub has started your <strong>Run Manhwa Scraper</strong> workflow. It will crawl ArenaScan and update your Firestore database.
+              </p>
+              <div class="pt-1 flex items-center gap-2" id="poll-indicator">
+                <span class="animate-spin text-stone-400 text-[11px]">🔄</span>
+                <span class="text-stone-400 text-[11px]">Monitoring run status on GitHub...</span>
+              </div>
+              <div class="pt-1.5 flex gap-2">
+                <a href="https://github.com/${repo}/actions/workflows/scraper.yml" target="_blank" 
+                   class="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 text-[11px] font-semibold rounded-lg border border-stone-700 transition">
+                  <span>View Live Run on GitHub ↗</span>
+                </a>
+              </div>
+            </div>
+          `;
+
+          if (pollInterval) clearInterval(pollInterval);
+          let attempts = 0;
+          pollInterval = setInterval(async () => {
+            attempts++;
+            if (attempts > 25) {
+              clearInterval(pollInterval);
+              return;
+            }
+            try {
+              const runRes = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=1`, {
+                headers: {
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': `Bearer ${pat}`
+                }
+              });
+              if (runRes.ok) {
+                const runData = await runRes.json();
+                const latest = runData.workflow_runs?.[0];
+                if (latest) {
+                  const pollEl = document.getElementById('poll-indicator');
+                  if (pollEl) {
+                    let statusColor = "text-amber-400";
+                    let icon = "⏳";
+                    if (latest.status === "completed") {
+                      if (latest.conclusion === "success") {
+                        statusColor = "text-emerald-400 font-bold";
+                        icon = "✅";
+                        clearInterval(pollInterval);
+                      } else {
+                        statusColor = "text-red-400 font-bold";
+                        icon = "❌";
+                        clearInterval(pollInterval);
+                      }
+                    } else if (latest.status === "in_progress") {
+                      statusColor = "text-sky-400 font-bold";
+                      icon = "⚙️";
+                    }
+                    pollEl.innerHTML = `
+                      <span class="${statusColor}">${icon} Status: ${latest.status} ${latest.conclusion ? `(${latest.conclusion})` : ''}</span>
+                    `;
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("Poll error:", e);
+            }
+          }, 4000);
+
+        } else {
+          let errDetail = "";
+          try {
+            const errJson = await res.json();
+            errDetail = errJson.message || "";
+          } catch (_) {}
+
+          let hint = "Please verify your repository name, token permissions (needs 'workflow' or 'repo'), and that '.github/workflows/scraper.yml' exists on the 'main' branch.";
+          if (res.status === 401) {
+            hint = "GitHub token is unauthorized or expired. Create a new token with 'workflow' permission.";
+          } else if (res.status === 404) {
+            hint = "Repository or workflow file not found. Check if the repo path matches 'username/repo' and that '.github/workflows/scraper.yml' has been pushed to your repo's main branch.";
+          }
+
+          statusBox.innerHTML = `
+            <div class="p-3.5 bg-red-950/40 border border-red-800/80 rounded-xl space-y-2 text-xs">
+              <div class="flex items-center gap-2 text-red-400 font-bold">
+                <span>❌ GitHub API Error (HTTP ${res.status})</span>
+              </div>
+              <p class="text-stone-300 font-mono text-[11px] leading-relaxed">
+                ${errDetail || res.statusText}
+              </p>
+              <p class="text-stone-400 text-[11px] leading-relaxed">
+                💡 ${hint}
+              </p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        statusBox.innerHTML = `
+          <div class="p-3.5 bg-red-950/40 border border-red-800/80 rounded-xl space-y-1.5 text-xs text-red-400">
+            <strong>Network Error:</strong> ${err.message}
+          </div>
+        `;
+      } finally {
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.innerHTML = `<span>⚡ Run Scraper on GitHub Actions</span>`;
+        }
+      }
+    };
   </script>
 </head>
 <body class="bg-stone-950 text-stone-200 font-sans min-h-screen p-3.5 sm:p-6 antialiased">
@@ -808,9 +1066,13 @@
 
       <!-- Action Buttons -->
       <div class="flex items-center gap-2">
+        <button onclick="window.openScraperModal()" 
+                class="flex items-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white px-3.5 py-2 rounded-xl transition shadow-sm active:scale-95">
+          <span>🚀 Run Scraper</span>
+        </button>
         <button onclick="window.testFirebaseConnection()" 
                 class="flex items-center gap-1.5 text-xs font-bold bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/80 px-3.5 py-2 rounded-xl transition shadow-sm active:scale-95">
-          <span>⚡ Test DB Connection</span>
+          <span>⚡ Test DB</span>
         </button>
         <button onclick="window.openConfigModal()" 
                 class="flex items-center gap-1.5 text-xs font-medium bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-700 px-3 py-2 rounded-xl transition">
@@ -880,14 +1142,16 @@
         <h3 class="text-sm font-bold text-white">+ Add Manhwa to Reading List</h3>
         <p class="text-xs text-stone-400">Instantly saves to Firestore and creates a direct ArenaScan chapter link.</p>
       </div>
-      <form id="add-form" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <form id="add-form" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         <input type="text" id="new-title" placeholder="Manhwa Title (e.g. Solo Leveling)" required 
                class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
-        <input type="number" id="new-chapter" placeholder="Latest Chapter" value="1" step="any" required 
+        <input type="number" id="new-chapter" placeholder="Latest Chapter (e.g. 1)" value="1" step="any" required 
                class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-red-500" />
         <input type="url" id="new-url" placeholder="ArenaScan Chapter URL (optional, auto-generated)" 
                class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
-        <button type="submit" id="add-btn" class="sm:col-span-3 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2.5 rounded-xl transition active:scale-95 shadow">
+        <input type="url" id="new-cover" placeholder="ArenaScan Cover URL (optional, e.g. https://arenascan.com/...jpg)" 
+               class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
+        <button type="submit" id="add-btn" class="sm:col-span-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2.5 rounded-xl transition active:scale-95 shadow">
           Add Title to Firebase
         </button>
       </form>
@@ -945,6 +1209,98 @@
       <div class="flex justify-end gap-2 pt-2">
         <button onclick="window.closeConfigModal()" class="px-3 py-1.5 text-xs text-stone-400 hover:text-white rounded-xl">Cancel</button>
         <button onclick="window.saveConfigModal()" class="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl">Save & Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Scraper Trigger Modal (GitHub Actions & Local) -->
+  <div id="scraper-modal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-stone-800 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-red-600/20 text-red-400 flex items-center justify-center font-bold text-xs">
+            🚀
+          </div>
+          <div>
+            <h3 class="font-bold text-sm text-white">Run Scraper Manually</h3>
+            <p class="text-[11px] text-stone-400">Trigger chapter updates & new discoveries anytime</p>
+          </div>
+        </div>
+        <button onclick="window.closeScraperModal()" class="text-stone-400 hover:text-white text-sm p-1 rounded-lg hover:bg-stone-800 transition">✕</button>
+      </div>
+
+      <!-- Option 1: Trigger GitHub Actions Runner -->
+      <div class="bg-stone-950/80 border border-stone-800 rounded-xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-stone-100 flex items-center gap-1.5">
+            <span>⚡ Method 1: GitHub Actions (Free Cloud Runner)</span>
+          </span>
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/80">
+            Recommended
+          </span>
+        </div>
+        <p class="text-xs text-stone-400 leading-relaxed">
+          Runs <code class="text-stone-300">scraper.py</code> on GitHub's free runners in the cloud. Your PC doesn't even need to be on!
+        </p>
+
+        <div class="space-y-2.5 pt-1">
+          <div>
+            <label class="block text-[11px] font-medium text-stone-300 mb-1">GitHub Repository:</label>
+            <input type="text" id="gh-repo-input" placeholder="e.g. your-username/manhwa-tracker" 
+                   oninput="window.updateGhActionsQuickLink()"
+                   class="w-full bg-stone-900 border border-stone-800 rounded-lg px-3 py-1.5 text-xs text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500 font-mono" />
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] font-medium text-stone-300">GitHub Personal Access Token (PAT):</label>
+              <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=ArenaScan+Trigger" target="_blank" 
+                 class="text-[10px] text-red-400 hover:underline">
+                Generate Token ↗
+              </a>
+            </div>
+            <input type="password" id="gh-pat-input" placeholder="ghp_xxxx or github_pat_xxxx" 
+                   class="w-full bg-stone-900 border border-stone-800 rounded-lg px-3 py-1.5 text-xs text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500 font-mono" />
+            <p class="text-[10px] text-stone-500 mt-1">
+              🔒 Saved strictly in your browser's <code class="text-stone-400">localStorage</code>. Token requires <code class="text-stone-400">actions:write</code> or <code class="text-stone-400">workflow</code> permission.
+            </p>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2 pt-1">
+            <button id="btn-trigger-gh-scraper" onclick="window.triggerGitHubScraper()" 
+                    class="flex-1 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 px-3 rounded-xl transition shadow active:scale-95">
+              <span>⚡ Run Scraper on GitHub Actions</span>
+            </button>
+            <a id="gh-direct-link" href="#" target="_blank" 
+               class="hidden flex items-center justify-center gap-1 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold py-2 px-3 rounded-xl transition border border-stone-700">
+              <span>Open on GitHub ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Status Box -->
+        <div id="scraper-run-status" class="hidden pt-1"></div>
+      </div>
+
+      <!-- Option 2: Run Locally via Python -->
+      <div class="bg-stone-950/80 border border-stone-800 rounded-xl p-4 space-y-2">
+        <span class="text-xs font-bold text-stone-200 block">💻 Method 2: Run On Your Computer</span>
+        <p class="text-xs text-stone-400 leading-relaxed">
+          Open your terminal in your project folder with <code class="text-stone-300">firebase-key.json</code> and run:
+        </p>
+        <div class="flex items-center justify-between bg-stone-900 border border-stone-800 rounded-lg p-2.5 font-mono text-xs text-amber-300">
+          <code>python scraper.py</code>
+          <button onclick="navigator.clipboard.writeText('python scraper.py'); alert('Copied to clipboard!');" 
+                  class="text-stone-400 hover:text-white text-[11px] px-2 py-0.5 rounded bg-stone-800">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-1">
+        <button onclick="window.closeScraperModal()" class="px-4 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold rounded-xl">
+          Close
+        </button>
       </div>
     </div>
   </div>
