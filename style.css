@@ -95,6 +95,7 @@ button:hover {
     border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.04);
     box-sizing: border-box;
+    min-height: 200px;
 }
 
 .column-heading {
@@ -139,7 +140,7 @@ button:hover {
     letter-spacing: -0.2px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis; /* Shrinks titles layout elements elegantly on small viewports */
+    text-overflow: ellipsis;
 }
 
 .manga-chapter-badge { 
