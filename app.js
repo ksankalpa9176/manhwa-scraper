@@ -1,5 +1,5 @@
 // =========================================================================
-// 🛠️ CONFIGURATION STEP: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
+// 1. INITIALIZATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
 // =========================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
@@ -11,20 +11,21 @@ const firebaseConfig = {
   measurementId: "G-3YGH9RWWV8"
 };
 
-// Initialize Firebase App instance securely
+// Initialize Firebase App instance FIRST so it is ready for functions below
 firebase.initializeApp(firebaseConfig);
 const firestoreDb = firebase.firestore();
 
-// Global tracking variable to store user tracking queries securely
+// Global tracking variables to store user tracking queries
 let activeWatchlistSet = new Set();
 
 // === ACTION 1: ADD INPUT TITLES TO FIREBASE WATCHLIST ===
 async function saveWatchlistEntry() {
     const inputField = document.getElementById('manhwaTitleField');
-    const titleValue = inputField.value ? inputField.value.trim() : '';
+    const titleValue = inputField.value.trim();
     
-    if (titleValue !== '') {
+    if (titleValue) {
         try {
+            // This will now work perfectly because firestoreDb is initialized above!
             await firestoreDb.collection('watchlist').add({
                 title: titleValue,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -33,7 +34,7 @@ async function saveWatchlistEntry() {
             alert('Success! Title added to your tracking targets.');
         } catch (error) {
             console.error("Error adding document to watchlist: ", error);
-            alert('Firebase Write Error: ' + error.message);
+            alert('Firebase Write Error! Check console log tabs.');
         }
     }
 }
@@ -45,10 +46,8 @@ firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
     activeWatchlistSet.clear();
     watchlistSnapshot.forEach((doc) => {
         const data = doc.data();
-        if (data && data.title) {
-            // FIXED: Using pure standard JavaScript string trimming methods to prevent silent crashes
-            const cleanWatchlistTitle = String(data.title).toLowerCase().trim();
-            activeWatchlistSet.add(cleanWatchlistTitle);
+        if (data.title) {
+            activeWatchlistSet.add(data.title.toLowerCase().trim());
         }
     });
     // Triggers full layout sync whenever target items change
@@ -65,8 +64,6 @@ function syncManhwaFeeds() {
             const watchlistContainer = document.getElementById('watchlistFeedPanel');
             const discoveryContainer = document.getElementById('discoveryFeedPanel');
             
-            if (!watchlistContainer || !discoveryContainer) return;
-            
             watchlistContainer.innerHTML = '';
             discoveryContainer.innerHTML = '';
 
@@ -75,8 +72,6 @@ function syncManhwaFeeds() {
 
             querySnapshot.forEach((doc) => {
                 const manhwaData = doc.data();
-                if (!manhwaData) return;
-
                 const rawTitle = manhwaData.title || '';
                 const cleanTitle = rawTitle.toLowerCase().trim();
                 const chapterNum = manhwaData.last_scanned_chapter || 0;
@@ -107,7 +102,7 @@ function syncManhwaFeeds() {
                 // MATCH 2: Discovery layer filter condition rule (under 10 chapters)
                 if (chapterNum <= 10) {
                     const discoveryCard = cardItem.cloneNode(true);
-                    discoveryCard.onclick = cardItem.onclick; // Secure link bindings mapping
+                    discoveryCard.onclick = cardItem.onclick; 
                     discoveryContainer.appendChild(discoveryCard);
                     discoveryCount++;
                 }
