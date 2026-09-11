@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "manhwa-tracker-be510",
+  "private_key_id": "50b0721187024f3d2c3b19209e9c5d4296772ad5",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDL16NNq3KKmW2A\nT6H7bHbptYeByB1juIN3WAFqCUm9Q/vnuC35t8tR93jkVSMbK6b3cKwHuyfNhiiZ\nlHkNKs9Out01eMSmXpeYqGRiyLuYzsCLSzDdkvTthUZBlzAtvpfpqd/MyvqGbKjN\n/vTV0chi2u4hCCt+mtBh3HI3YhNtCf2fjtmKBRbvQHGK/0O7R9wxQt07kTYSpv/+\niXnXt69JhqG8tjuOUkrUAlDrZp0bTzutZtb160A7Ccc1G1NYdsWrZ8n6n3mS3IFU\ncVFeDZ1xAI9ZrLIWvE7iBDsS4KpLIknNGbdVhrBq/yJX2we8lGtFEYfYXb9xz7p2\nJelxYprzAgMBAAECggEAALXrRId2IOFUwRnCNDdb4OJYaw9oPaU6Fb+4Fj+5GWF1\n4Xkn12e6gbosx5laB6BWJ7vaO8u5liaKwe1do1/CmMibof1D6NNkiRPw+HkSrHfR\nspuO2bMhsGYN1oeFz/ISYybazsLJNq5I4cdus4trNU0ENDX7UNXo3BBcNKHtfB14\nJDHjAnr2P+aZyd4sdimahhrytKLApHpzvyaqRbTqPjDgXN14GRetaJ8+ZYJKVcO6\nJgFHHZEEENOPmDTGAT4CNcRmYU7EifCX29RgNDyUs2T1eYISNdPPfwA/GAlPglaR\nQc921PU23XLJP4jJ6hNdsAa0p12kPfzplAvPZ7nbQQKBgQD8784g4yxvj6Ngl9bn\n/7AtnnAm0YwK2L6UXzi4d4GuMy0FaIyltLV+zcDGpAjN1gBkfNZGcxGqZOMQh56O\nrvJU+2Xnn4Mr5/PS/9SVSypTiREz59SlxXgwFuzRfUhHRKdilyJVIHBgyfpkZ+Yo\nA35Bj4QPulUaf+BBBWMUbsQ52QKBgQDOT59WsQdKyjpqU/U8xe74dPa24WZXD/K2\nz38k4YRdDAAChHdWE93AWie/e5bulUE6fSM22S20dt29RCTenRxi9yrZD3nwEk7O\nSQNBUc+E/YoytyoYCBTDUl3U1bw5f82dOvVYgcGdla1alExc6LCpNDBuagc89Nwv\n3SVCamZPqwKBgB+LFGy7h/YdtqU8KlviYik+QgRFS66qmxHL0joHBVAhJ7Mt96RO\npfe7Vxguqr5ousHNY7eDcCeMz1hnYVmv7Z61f17kYKpgEeM1bmBz8EJcrJ2JgtZt\nivCMW1pAwnvIzwsXh/uPwRQA/E37OxOwY9VvPWvss+JLIj9ZmaKZsbT5AoGAIeg+\nJM5Vh3ozHZSM4p8ZRmZawfXLjxWE63ywxcv2qCA3xDInNtNvB5UJoVPbm3yWStmU\nNwh8lYNPsDKJ6LhjmPRMa346qTUpFIg1a7/ZXl8ZHnqyBV8Won9gAoHaPIz/qw6s\nkg5JVu/pnNBwuHhZyIVWTF9Krz8DDS7IV+EKzZ8CgYA6nS05CzL/qMSn+5CvEGjS\nx06bjUi8Zyb6GOMlsVXlYlZWUJ0ftiIGpVSG1hb+0JoCNiGZVATojJXkbUSncQqD\nt2jXoTRtcZfubos25NY4wf4XddZCsLFuWrCiDu3SFFiZtIIhYBMhHIfvd8imWnXg\nmICyZWa3LImDREE7eUngGg==\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@manhwa-tracker-be510.iam.gserviceaccount.com",
+  "client_id": "113433020681855505954",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40manhwa-tracker-be510.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
