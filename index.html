@@ -5,14 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manhwa Tracker Dashboard</title>
     
-    <!-- FIX: Switched from gstatic to Cloudflare CDNJS to completely bypass browser security blocks -->
-    <script src="https://cloudflare.com"></script>
-    <script src="https://cloudflare.com"></script>
-    
-    <!-- Link to your clean CSS file -->
+    <!-- Link to your separate CSS file -->
     <link rel="stylesheet" href="style.css">
     
-    <!-- Safe Favicon Fallback Line: Erases the annoying 404 console log warning noise -->
+    <!-- Safe Favicon Fallback to clear console error noise -->
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
 </head>
 <body>
@@ -20,7 +16,7 @@
     <div class="container">
         <div class="header">📚 Manhwa Personal Hub</div>
 
-        <!-- Fully Responsive Track Input Pane Wrapper Layout -->
+        <!-- Track Input Bar Pane -->
         <div class="track-pane">
             <input type="text" id="manhwaTitleField" placeholder="Enter Manhwa Title Exactly...">
             <button id="trackBtn">Track Title</button>
@@ -30,46 +26,58 @@
         <div class="layout-grid">
             <div class="column-card">
                 <div class="column-heading">My Feed (Watchlist Items)</div>
-                <div id="watchlistFeedPanel">Loading watchlist stream data...</div>
+                <div id="watchlistFeedPanel">Connecting to network channels...</div>
             </div>
             <div class="column-card">
                 <div class="column-heading">Newly Discovered Series</div>
-                <div id="discoveryFeedPanel">Loading dynamic discovery stream...</div>
+                <div id="discoveryFeedPanel">Connecting to network channels...</div>
             </div>
         </div>
     </div>
 
+    <!-- Script loading fallback architecture to break network blocks safely -->
     <script>
-        // Bulletproof checking hook loop setup framework
-        function verifyFirebaseInfrastructure() {
-            if (typeof firebase !== 'undefined') {
-                console.log("✅ Cloudflare CDN loaded successfully! Starting database engine layers...");
-                launchApplicationHub();
-            } else {
-                console.log("⏳ Loading network scripts... Retrying pipeline connection frame...");
-                setTimeout(verifyFirebaseInfrastructure, 50);
-            }
-        }
+        (function() {
+            var s1 = document.createElement('script');
+            s1.src = "https://gstatic.com";
+            s1.onload = function() {
+                var s2 = document.createElement('script');
+                s2.src = "https://gstatic.com";
+                s2.onload = startTrackerEngine;
+                document.head.appendChild(s2);
+            };
+            s1.onerror = function() {
+                var f1 = document.createElement('script');
+                f1.src = "https://cloudflare.com";
+                f1.onload = function() {
+                    var f2 = document.createElement('script');
+                    f2.src = "https://cloudflare.com";
+                    f2.onload = startTrackerEngine;
+                    document.head.appendChild(f2);
+                };
+                document.head.appendChild(f1);
+            };
+            document.head.appendChild(s1);
+        })();
 
-        function launchApplicationHub() {
-            // =========================================================================
-            // 🛠️ CONFIGURATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
-            // =========================================================================
+        function startTrackerEngine() {
+            console.log("✅ Core database libraries loaded successfully!");
+            
+            // Your absolute exact database keys natively loaded
             const firebaseConfig = {
-               apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-               authDomain: "manhwa-tracker-be510.firebaseapp.com",
-               projectId: "manhwa-tracker-be510",
-               storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-               messagingSenderId: "762652201419",
-               appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-               measurementId: "G-3YGH9RWWV8"
+                apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
+                authDomain: "://firebaseapp.com",
+                projectId: "manhwa-tracker-be510",
+                storageBucket: "manhwa-tracker-be510.firebasestorage.app",
+                messagingSenderId: "762652201419",
+                appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
+                measurementId: "G-3YGH9RWWV8"
             };
 
-            // Initialize structural core configuration components securely
+            // Initialize Firebase App instance safely
             firebase.initializeApp(firebaseConfig);
             const firestoreDb = firebase.firestore();
 
-            // Safe global tracking hash memory set 
             let activeWatchlistSet = new Set();
 
             // === ACTION 1: SUBMIT AND WRITE INPUT VALUE STRINGS INTO THE WATCHLIST COLLECTION ===
@@ -87,17 +95,14 @@
                         alert('Success! Title added to your tracking targets.');
                     } catch (error) {
                         console.error("Error adding document to watchlist: ", error);
-                        alert('Firebase Write Error! Check console log tabs.');
+                        alert('Firebase Write Error! Make sure your Firestore Rules are set to open.');
                     }
                 }
             }
 
-            // Bind click event trigger elements listeners directly to document nodes safely
             document.getElementById('trackBtn').addEventListener('click', saveWatchlistEntry);
 
-            // === ACTION 2: REAL-TIME CROSS-REFERENCE DATA ENGINE LINKED TO YOUR PYTHON LABELS ===
-            
-            // Step A: Real-time listener for the user watchlist data matrix collection
+            // === ACTION 2: REAL-TIME CROSS-REFERENCE DATA ENGINE ===
             firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
                 activeWatchlistSet.clear();
                 watchlistSnapshot.forEach((doc) => {
@@ -111,7 +116,6 @@
                 console.error("Watchlist network stream error: ", error);
             });
 
-            // Step B: Real-time data routing handler for your Python script's collection row updates
             function syncManhwaFeeds() {
                 firestoreDb.collection('manhwa')
                     .orderBy('discovered_at', 'desc')
@@ -170,10 +174,6 @@
                     });
             }
         }
-
-        // Initialize script validation parameters instantly
-        verifyFirebaseInfrastructure();
     </script>
 </body>
 </html>
-<!-- Cache Force Patch Final V7 -->
