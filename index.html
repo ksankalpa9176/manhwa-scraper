@@ -5,25 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manhwa Tracker Dashboard</title>
     
-    <!-- Core Firebase SDKs loaded securely via global production scripts -->
-    <script src="https://gstatic.com"></script>
-    <script src="https://gstatic.com"></script>
+    <!-- FIX: Switched from gstatic to Cloudflare CDNJS to completely bypass browser security blocks -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://cloudflare.com"></script>
     
-    <!-- Link to your clean CSS style layout layer file -->
+    <!-- Link to your clean CSS file -->
     <link rel="stylesheet" href="style.css">
+    
+    <!-- Safe Favicon Fallback Line: Erases the annoying 404 console log warning noise -->
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
 </head>
 <body>
 
     <div class="container">
         <div class="header">📚 Manhwa Personal Hub</div>
 
-        <!-- Fully Responsive Track Input Pane Layout Wrapper -->
+        <!-- Fully Responsive Track Input Pane Wrapper Layout -->
         <div class="track-pane">
             <input type="text" id="manhwaTitleField" placeholder="Enter Manhwa Title Exactly...">
             <button id="trackBtn">Track Title</button>
         </div>
 
-        <!-- Two Columns Data View Content Panels Grid Layout -->
+        <!-- Double Column Data Grid Template -->
         <div class="layout-grid">
             <div class="column-card">
                 <div class="column-heading">My Feed (Watchlist Items)</div>
@@ -37,19 +40,18 @@
     </div>
 
     <script>
-        // BULLETPROOF ENFORCED LOOPER ENGINE: Eliminates race condition dropouts permanently
-        function checkFirebaseAvailability() {
+        // Bulletproof checking hook loop setup framework
+        function verifyFirebaseInfrastructure() {
             if (typeof firebase !== 'undefined') {
-                console.log("✅ Firebase Engine verified active! Bootstrapping layout channels...");
-                initializeTrackerDashboard();
+                console.log("✅ Cloudflare CDN loaded successfully! Starting database engine layers...");
+                launchApplicationHub();
             } else {
-                console.log("⏳ Core libraries downloading... Retrying connection frame...");
-                // Checks again in 50 milliseconds without locking up the user interface canvas
-                setTimeout(checkFirebaseAvailability, 50);
+                console.log("⏳ Loading network scripts... Retrying pipeline connection frame...");
+                setTimeout(verifyFirebaseInfrastructure, 50);
             }
         }
 
-        function initializeTrackerDashboard() {
+        function launchApplicationHub() {
             // =========================================================================
             // 🛠️ CONFIGURATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
             // =========================================================================
@@ -63,7 +65,7 @@
                measurementId: "G-3YGH9RWWV8"
             };
 
-            // Initialize global configuration components securely now that availability is verified
+            // Initialize structural core configuration components securely
             firebase.initializeApp(firebaseConfig);
             const firestoreDb = firebase.firestore();
 
@@ -169,9 +171,9 @@
             }
         }
 
-        // Initialize verification check sequence immediately on runtime load
-        checkFirebaseAvailability();
+        // Initialize script validation parameters instantly
+        verifyFirebaseInfrastructure();
     </script>
 </body>
 </html>
-<!-- Cache Override Engine Hook V6 -->
+<!-- Cache Force Patch Final V7 -->
