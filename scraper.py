@@ -46,17 +46,14 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-
 def normalize_title(title):
     """Clean title string for matching and doc ID creation."""
     return re.sub(r'[^a-zA-Z0-9]+', ' ', title).strip().lower()
-
 
 def make_doc_id(title):
     """Generate safe document ID for Firestore."""
     cleaned = re.sub(r'[^a-zA-Z0-9]+', '_', title.lower()).strip('_')
     return cleaned or "unknown_title"
-
 
 def to_arenascan_slug(title):
     """
@@ -69,13 +66,11 @@ def to_arenascan_slug(title):
     cleaned = re.sub(r"[^a-z0-9]+", "-", cleaned).strip("-")
     return cleaned or "manhwa"
 
-
 def format_chapter_suffix(chapter_num):
     """Format chapter number: 123.0 -> '123', 12.5 -> '12-5'"""
     if chapter_num == int(chapter_num):
         return str(int(chapter_num))
     return str(chapter_num).replace(".", "-")
-
 
 def build_arenascan_chapter_url(title, chapter_num, series_url=None):
     """
@@ -89,10 +84,9 @@ def build_arenascan_chapter_url(title, chapter_num, series_url=None):
             slug = m.group(1).strip("-")
     if not slug:
         slug = to_arenascan_slug(title)
-    
+
     ch_suffix = format_chapter_suffix(chapter_num)
     return f"https://arenascan.com/{slug}-chapter-{ch_suffix}/"
-
 
 def clean_arenascan_chapter_url(url, title, chapter_num, series_url=None):
     """
@@ -102,13 +96,12 @@ def clean_arenascan_chapter_url(url, title, chapter_num, series_url=None):
     """
     if not url or url == '#' or not url.startswith('http'):
         return build_arenascan_chapter_url(title, chapter_num, series_url)
-    
+
     if 'arenascan.com' in url:
         if '_' in url or '/manga/' in url or '-extra-s-' in url:
             return build_arenascan_chapter_url(title, chapter_num, series_url)
-            
-    return url
 
+    return url
 
 def extract_chapter_number(text):
     """
@@ -119,7 +112,6 @@ def extract_chapter_number(text):
     if matches:
         return float(matches[0])
     return 999.0
-
 
 def fetch_arenascan_cover(title, series_url=None):
     """
@@ -139,6 +131,7 @@ def fetch_arenascan_cover(title, series_url=None):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
     }
+
     try:
         r = requests.get(page_url, headers=headers, timeout=10)
         if r.status_code == 200:
@@ -151,10 +144,10 @@ def fetch_arenascan_cover(title, series_url=None):
                     src = 'https://arenascan.com' + src
                 if src.startswith('http'):
                     return src
-    except Exception as e:
+    except Exception:
         pass
-    return ""
 
+    return ""
 
 def run_scraper():
     print("\n Connecting to ArenaScan Feed...")
@@ -164,7 +157,7 @@ def run_scraper():
     # ==========================================
     watchlist_ref = db.collection('watchlist')
     watchlist_docs = watchlist_ref.stream()
-    
+
     # Store watchlist as a dictionary of { normalized_title: (doc_id, doc_data) }
     my_watchlist = {}
     for doc in watchlist_docs:
@@ -187,7 +180,7 @@ def run_scraper():
             if real_cover:
                 watchlist_ref.document(doc_id).update({'cover_url': real_cover})
                 w_data['cover_url'] = real_cover
-                print(f"   ✓ Saved ArenaScan cover: {real_cover}")
+                print(f" ✓ Saved ArenaScan cover: {real_cover}")
 
     # Load existing discoveries so we don't notify twice for the same discovery
     discoveries_ref = db.collection('discoveries')
@@ -221,21 +214,19 @@ def run_scraper():
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Selector: Matches standard manga/manhwa update cards on WordPress/Madara/MangaStream themes
+        # Selector: Matches standard manga/manhwa update cards
         items = soup.select('.page-item-detail, .bsx, .utao, .slide-item, .listupd .bs')
-        
-        # Fallback if standard classes differ
         if not items:
             items = soup.select('article, .manga-item, .post-item')
 
-        print(f"  Found {len(items)} manhwa cards on page {page}.")
+        print(f" Found {len(items)} manhwa cards on page {page}.")
 
         for item in items:
             # 1. Extract Title
             title_el = item.select_one('.post-title a, .tt, h4 a, h3 a, .title a, a[title]')
             if not title_el:
                 continue
-            
+
             raw_title = title_el.get_text(strip=True)
             norm_title = normalize_title(raw_title)
             doc_id = make_doc_id(raw_title)
@@ -248,8 +239,7 @@ def run_scraper():
 
             chapter_el = item.select_one('.chapter-item, .epxs, .chapter, .ch-item, .sub-ch, ul li')
             chapter_text = chapter_el.get_text(strip=True) if chapter_el else "Chapter 1"
-            
-            # Find direct chapter link tag if present
+
             chapter_link_el = item.select_one('a[href*="-chapter-"], a[href*="/chapter/"], .chapter-item a, .ch-item a, .sub-ch a')
             raw_chapter_url = chapter_link_el.get('href', '') if chapter_link_el else ''
             if raw_chapter_url and raw_chapter_url.startswith('/'):
@@ -257,7 +247,7 @@ def run_scraper():
 
             chapter_num = extract_chapter_number(chapter_text)
 
-            # Clean and ensure valid chapter URL with no 404s (strips apostrophes, hyphens, avoids underscores)
+            # Clean and ensure valid chapter URL with no 404s
             chapter_url = clean_arenascan_chapter_url(raw_chapter_url, raw_title, chapter_num, series_url)
 
             # 3. Extract Cover Image
@@ -265,13 +255,13 @@ def run_scraper():
             cover_url = ""
             if img_el:
                 cover_url = (
-                    img_el.get('data-src') or 
-                    img_el.get('data-lazy-src') or 
-                    img_el.get('src') or 
+                    img_el.get('data-src') or
+                    img_el.get('data-lazy-src') or
+                    img_el.get('src') or
                     ""
                 )
-                if cover_url.startswith('/'):
-                    cover_url = base_url + cover_url
+            if cover_url.startswith('/'):
+                cover_url = base_url + cover_url
 
             # ==========================================
             # 4. ROUTE 1: TITLE IS IN YOUR WATCHLIST
@@ -298,10 +288,9 @@ def run_scraper():
                 # Check if a new chapter released
                 if chapter_num > last_known_chapter:
                     print(f"\n🔔 [NEW CHAPTER RELEASED] '{raw_title}'")
-                    print(f"   Old: Ch. {last_known_chapter} ➜ NEW: {chapter_text} ({chapter_num})")
-                    print(f"   Link: {chapter_url}")
+                    print(f" Old: Ch. {last_known_chapter} ➜ NEW: {chapter_text} ({chapter_num})")
+                    print(f" Link: {chapter_url}")
 
-                    # Update Firebase Firestore!
                     watchlist_ref.document(w_doc_id).update({
                         'title': raw_title,
                         'latest_chapter': chapter_num,
@@ -312,7 +301,6 @@ def run_scraper():
                         'updated_at': firestore.SERVER_TIMESTAMP
                     })
 
-                    # Update local state
                     w_data['latest_chapter'] = chapter_num
                     w_data['latest_chapter_text'] = chapter_text
                     w_data['latest_chapter_url'] = chapter_url
@@ -323,12 +311,11 @@ def run_scraper():
             elif chapter_num <= 10.0:
                 if doc_id not in existing_discoveries:
                     print(f"\n✨ [NEW DISCOVERY (<= 10 Ch.)] '{raw_title}'")
-                    print(f"   Chapter: {chapter_text}")
-                    print(f"   Link: {chapter_url}")
+                    print(f" Chapter: {chapter_text}")
+                    print(f" Link: {chapter_url}")
 
                     disc_cover = cover_url or fetch_arenascan_cover(raw_title, series_url)
 
-                    # Store in separate 'discoveries' collection in Firebase
                     discoveries_ref.document(doc_id).set({
                         'title': raw_title,
                         'latest_chapter': chapter_num,
@@ -338,14 +325,11 @@ def run_scraper():
                         'notified': True,
                         'created_at': firestore.SERVER_TIMESTAMP
                     })
-
                     existing_discoveries.add(doc_id)
 
-        # Respectful delay between page requests
         time.sleep(1.0)
 
     print("\n Finished scanning all pages. Firestore database is up to date!")
-
 
 if __name__ == '__main__':
     run_scraper()
