@@ -1,0 +1,29 @@
+name: Run Manhwa Scraper
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Triggers automatically every 6 hours
+  workflow_dispatch: # Allows you to also click a button to run it manually anytime
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Libraries
+        run: |
+          pip install requests beautifulsoup4 firebase-admin
+
+      - name: Recreate Firebase Key File From Secret
+        run: |
+          echo "${{ secrets.FIREBASE_JSON_SECRET }}" > firebase-key.json
+
+      - name: Run Scraper Script
+        run: python scraper.py
