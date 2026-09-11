@@ -163,15 +163,16 @@
         }
 
         firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
-            activeWatchlistSet.clear();
-            watchlistSnapshot.forEach((doc) => {
-                const data = doc.data();
-                if (data.title) {
-                    activeWatchlistSet.add(data.title.toLowerCase().trim());
-                }
-            });
-            syncManhwaFeeds();
-        });
+    activeWatchlistSet.clear();
+    watchlistSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.title) {
+            activeWatchlistSet.add(data.title.toLowerCase().trim());
+             }
+           });
+         syncManhwaFeeds();
+         });
+
 
         function syncManhwaFeeds() {
             firestoreDb.collection('manhwa')
