@@ -30,7 +30,6 @@ body {
     margin-bottom: 20px;
 }
 
-/* Fully Responsive Track Input Pane Wrapper Layout */
 .track-pane {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.06);
@@ -52,7 +51,7 @@ input {
     font-size: 16px;
     outline: none;
     transition: 0.2s;
-    min-width: 0; /* Prevents overflow bugs on mobile devices */
+    min-width: 0;
 }
 
 input:focus {
@@ -76,7 +75,6 @@ button:hover {
     background: #7B2CBF;
 }
 
-/* Mobile-First Layout Grid Configuration */
 .layout-grid {
     display: grid;
     grid-template-columns: 1fr;
