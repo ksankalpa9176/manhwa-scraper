@@ -14,6 +14,41 @@
   </script>
   <!-- Tailwind CSS CDN for styling -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Immediate Global Stubs so UI buttons work instantly without Reference/TypeError -->
+  <script>
+    window.testFirebaseConnection = function() {
+      const modal = document.getElementById('diag-modal');
+      const output = document.getElementById('diag-output');
+      if (modal) modal.classList.remove('hidden');
+      if (output) {
+        output.innerHTML = `
+          <div class="p-3.5 bg-amber-950/40 border border-amber-800 rounded-xl space-y-2 text-xs">
+            <div class="font-bold text-amber-400">⏳ Initializing Tracker...</div>
+            <p class="text-stone-300 leading-relaxed">The Firebase module is loading. If this stays more than 2 seconds, click below to paste your Firebase credentials:</p>
+            <div class="pt-1">
+              <button onclick="window.closeDiagModal(); window.openConfigModal();" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold">
+                ⚙️ Open Firebase Setup
+              </button>
+            </div>
+          </div>
+        `;
+      }
+    };
+    window.openConfigModal = function() {
+      const modal = document.getElementById('config-modal');
+      if (modal) modal.classList.remove('hidden');
+    };
+    window.closeConfigModal = function() {
+      const modal = document.getElementById('config-modal');
+      if (modal) modal.classList.add('hidden');
+    };
+    window.closeDiagModal = function() {
+      const modal = document.getElementById('diag-modal');
+      if (modal) modal.classList.add('hidden');
+    };
+  </script>
+
   <!-- Firebase Web SDK (Vanilla JavaScript ES Modules) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -31,8 +66,8 @@
 
     // =========================================================================
     // 1. FIREBASE CONFIGURATION
-    // Replace the values below with your Firebase Web App credentials:
     // (Firebase Console -> Project Settings -> General -> Your apps -> Web app)
+    // NOTE: Supports BOTH `const firebaseConfig = ...` AND `const defaultFirebaseConfig = ...`!
     // =========================================================================
     const firebaseConfig = {
       apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
@@ -44,13 +79,43 @@
       measurementId: "G-3YGH9RWWV8"
     };
 
-    // Load custom config from localStorage if user saved it via the UI
-    const savedConfigStr = localStorage.getItem('arenascan_firebase_config');
-    const activeConfig = savedConfigStr ? JSON.parse(savedConfigStr) : defaultFirebaseConfig;
+
+    // Resolve whichever configuration variable exists safely
+    let resolvedConfig = null;
+    try {
+      if (typeof firebaseConfig !== 'undefined' && firebaseConfig) resolvedConfig = firebaseConfig;
+    } catch (e) {}
+    try {
+      if (!resolvedConfig && typeof defaultFirebaseConfig !== 'undefined' && defaultFirebaseConfig) resolvedConfig = defaultFirebaseConfig;
+    } catch (e) {}
+    if (!resolvedConfig) {
+      resolvedConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        messagingSenderId: "YOUR_SENDER_ID",
+        appId: "YOUR_APP_ID"
+      };
+    }
+
+    // Load custom config from localStorage if user saved it via the in-app UI
+    let activeConfig = resolvedConfig;
+    try {
+      const savedConfigStr = localStorage.getItem('arenascan_firebase_config');
+      if (savedConfigStr) {
+        const parsed = JSON.parse(savedConfigStr);
+        if (parsed && (parsed.projectId || parsed.apiKey)) {
+          activeConfig = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not read stored Firebase config:", e);
+    }
 
     let db = null;
     let isConnected = false;
-    let activeProjectId = activeConfig.projectId || "YOUR_PROJECT_ID";
+    let activeProjectId = (activeConfig && activeConfig.projectId) ? activeConfig.projectId : "YOUR_PROJECT_ID";
 
     // URL Cleaners & Builders for ArenaScan (removes apostrophes, hyphens, avoids 404s)
     function toArenaScanSlug(title) {
@@ -699,7 +764,7 @@
 
     // Config Modal handlers
     window.openConfigModal = function() {
-      const current = localStorage.getItem('arenascan_firebase_config') || JSON.stringify(defaultFirebaseConfig, null, 2);
+      const current = localStorage.getItem('arenascan_firebase_config') || JSON.stringify(activeConfig, null, 2);
       document.getElementById('config-input').value = current;
       document.getElementById('config-modal').classList.remove('hidden');
     };
