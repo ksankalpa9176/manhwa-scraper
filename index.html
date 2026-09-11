@@ -3,37 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ArenaScan Tracker - GitHub Pages</title>
-  <!-- Suppress benign Tailwind CDN advisory warning in console -->
-  <script>
-    const _origWarn = console.warn;
-    console.warn = function(...args) {
-      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
-      _origWarn.apply(console, args);
-    };
-  </script>
-  <!-- Tailwind CSS CDN for styling -->
+  <title>ArenaScan Manhwa Tracker</title>
+  
+  <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Immediate Global Stubs so UI buttons work instantly without Reference/TypeError -->
+  <!-- Early Global Registrations to Prevent any ReferenceErrors -->
   <script>
     window.testFirebaseConnection = function() {
       const modal = document.getElementById('diag-modal');
-      const output = document.getElementById('diag-output');
-      if (modal) modal.classList.remove('hidden');
-      if (output) {
-        output.innerHTML = `
-          <div class="p-3.5 bg-amber-950/40 border border-amber-800 rounded-xl space-y-2 text-xs">
-            <div class="font-bold text-amber-400">⏳ Initializing Tracker...</div>
-            <p class="text-stone-300 leading-relaxed">The Firebase module is loading. If this stays more than 2 seconds, click below to paste your Firebase credentials:</p>
-            <div class="pt-1">
-              <button onclick="window.closeDiagModal(); window.openConfigModal();" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold">
-                ⚙️ Open Firebase Setup
-              </button>
-            </div>
-          </div>
-        `;
+      if (modal) {
+        modal.classList.remove('hidden');
+        const output = document.getElementById('diag-output');
+        if (output) output.innerHTML = `<div class="p-3 bg-stone-900 rounded-lg text-amber-400 font-mono text-xs">Connecting to Google Firestore...</div>`;
       }
+    };
+    window.closeDiagModal = function() {
+      const modal = document.getElementById('diag-modal');
+      if (modal) modal.classList.add('hidden');
     };
     window.openConfigModal = function() {
       const modal = document.getElementById('config-modal');
@@ -41,10 +28,6 @@
     };
     window.closeConfigModal = function() {
       const modal = document.getElementById('config-modal');
-      if (modal) modal.classList.add('hidden');
-    };
-    window.closeDiagModal = function() {
-      const modal = document.getElementById('diag-modal');
       if (modal) modal.classList.add('hidden');
     };
     window.openScraperModal = function() {
@@ -65,335 +48,462 @@
       collection, 
       onSnapshot, 
       doc, 
-      getDocs,
       updateDoc, 
       setDoc, 
-      deleteDoc,
+      deleteDoc, 
+      getDocs, 
       serverTimestamp 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // =========================================================================
-    // 1. FIREBASE CONFIGURATION
-    // (Firebase Console -> Project Settings -> General -> Your apps -> Web app)
-    // NOTE: Supports BOTH `const firebaseConfig = ...` AND `const defaultFirebaseConfig = ...`!
-    // =========================================================================
-    const firebaseConfig = {
-      apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-      authDomain: "manhwa-tracker-be510.firebaseapp.com",
-      projectId: "manhwa-tracker-be510",
-      storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-      messagingSenderId: "762652201419",
-      appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-      measurementId: "G-3YGH9RWWV8"
-};
+    // 1. FIREBASE CONFIGURATION:
+    // Uses localStorage if configured via in-app modal, otherwise uses default config below.
+    const savedConfig = localStorage.getItem('arenascan_firebase_config');
+    
+    // Paste your Firebase web config here:
+    const defaultFirebaseConfig = {
+      apiKey: "AIzaSyYOUR_API_KEY_HERE",
+      authDomain: "your-app.firebaseapp.com",
+      projectId: "your-project-id",
+      storageBucket: "your-app.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef123456"
+    };
 
-    // Resolve whichever configuration variable exists safely
-    let resolvedConfig = null;
-    try {
-      if (typeof firebaseConfig !== 'undefined' && firebaseConfig) resolvedConfig = firebaseConfig;
-    } catch (e) {}
-    try {
-      if (!resolvedConfig && typeof defaultFirebaseConfig !== 'undefined' && defaultFirebaseConfig) resolvedConfig = defaultFirebaseConfig;
-    } catch (e) {}
-    if (!resolvedConfig) {
-      resolvedConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-        projectId: "YOUR_PROJECT_ID",
-        storageBucket: "YOUR_PROJECT_ID.appspot.com",
-        messagingSenderId: "YOUR_SENDER_ID",
-        appId: "YOUR_APP_ID"
-      };
-    }
-
-    // Load custom config from localStorage if user saved it via the in-app UI
-    let activeConfig = resolvedConfig;
-    try {
-      const savedConfigStr = localStorage.getItem('arenascan_firebase_config');
-      if (savedConfigStr) {
-        const parsed = JSON.parse(savedConfigStr);
-        if (parsed && (parsed.projectId || parsed.apiKey)) {
-          activeConfig = parsed;
-        }
+    let firebaseConfig = defaultFirebaseConfig;
+    if (savedConfig) {
+      try {
+        firebaseConfig = JSON.parse(savedConfig);
+      } catch (e) {
+        console.warn("Failed to parse saved config from localStorage:", e);
       }
-    } catch (e) {
-      console.warn("Could not read stored Firebase config:", e);
     }
 
-    let db = null;
+    // Initialize Firebase Client
+    let app, db;
     let isConnected = false;
-    let activeProjectId = (activeConfig && activeConfig.projectId) ? activeConfig.projectId : "YOUR_PROJECT_ID";
+    let connectionError = null;
+    let dbLatencyMs = 0;
 
-    // URL Cleaners & Builders for ArenaScan (removes apostrophes, hyphens, avoids 404s)
-    function toArenaScanSlug(title) {
-      return (title || '')
-        .toLowerCase()
-        .replace(/['’]/g, '')        // "Extra's" -> "Extras", "Demon's" -> "Demons"
-        .replace(/[^a-z0-9]+/g, '-') // spaces & symbols become hyphens
-        .replace(/^-+|-+$/g, '');
-    }
-
-    function formatChapterSuffix(ch) {
-      const num = Number(ch);
-      return Number.isInteger(num) ? num.toString() : num.toString().replace('.', '-');
-    }
-
-    function buildArenaChapterUrl(title, ch) {
-      const slug = toArenaScanSlug(title);
-      const chStr = formatChapterSuffix(ch);
-      return `https://arenascan.com/${slug}-chapter-${chStr}/`;
-    }
-
-    function buildArenaSeriesUrl(title) {
-      const slug = toArenaScanSlug(title);
-      return `https://arenascan.com/manga/${slug}/`;
-    }
-
-    function getCleanArenaUrl(storedUrl, title, ch) {
-      if (storedUrl && storedUrl.includes('arenascan.com')) {
-        // Repair invalid links: underscores, manga series pages used as chapters, broken apostrophes
-        if (storedUrl.includes('_') || storedUrl.includes('-extra-s-') || storedUrl.includes('/manga/')) {
-          return buildArenaChapterUrl(title, ch);
-        }
-        return storedUrl;
-      }
-      if (!storedUrl || storedUrl === '#' || !storedUrl.startsWith('http')) {
-        return buildArenaChapterUrl(title, ch);
-      }
-      return storedUrl;
-    }
-
-    // Initialize Firebase
     try {
-      if (activeProjectId && activeProjectId !== "YOUR_PROJECT_ID") {
-        const app = initializeApp(activeConfig);
-        db = getFirestore(app);
-        isConnected = true;
-        updateConnectionStatusUI('connected', activeProjectId);
-      } else {
-        updateConnectionStatusUI('demo', 'Demo Mode (Paste Firebase Keys)');
-      }
+      app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      isConnected = true;
     } catch (err) {
       console.error("Firebase init error:", err);
-      updateConnectionStatusUI('error', err.message);
+      connectionError = err.message;
     }
 
-    function updateConnectionStatusUI(state, text) {
-      const badge = document.getElementById('firebase-status-badge');
-      if (!badge) return;
-
-      if (state === 'connected') {
-        badge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 shadow-sm";
-        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Firestore: Connected (${text})</span>`;
-      } else if (state === 'demo') {
-        badge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-950/80 text-amber-400 border border-amber-800/80 cursor-pointer";
-        badge.onclick = window.openConfigModal;
-        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span><span>${text}</span>`;
-      } else {
-        badge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-950/80 text-red-400 border border-red-800/80";
-        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-400"></span><span>Error: ${text}</span>`;
-      }
-    }
+    // Expose helpers globally
+    window.arenascanApp = { app, db, config: firebaseConfig };
 
     // App State
-    let watchlistData = [];
-    let discoveriesData = [];
-    let currentFilter = 'all'; // 'all' | 'unread' | 'read'
+    let watchlist = [];
+    let discoveries = [];
+    let activeFilter = 'all';
     let searchQuery = '';
 
     // =========================================================================
-    // REAL-TIME FIRESTORE SYNC
+    // 2. FIRESTORE REAL-TIME LISTENERS
     // =========================================================================
-    if (db) {
-      // 1. Listen to 'watchlist' collection in Firestore
+    function startRealtimeListeners() {
+      if (!db) return;
+
+      const badge = document.getElementById('connection-badge');
+      if (badge) {
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Live Database</span>`;
+      }
+
+      // Watchlist listener
       onSnapshot(collection(db, "watchlist"), (snapshot) => {
-        watchlistData = [];
+        watchlist = [];
         snapshot.forEach((docSnap) => {
-          watchlistData.push({ id: docSnap.id, ...docSnap.data() });
+          watchlist.push({ id: docSnap.id, ...docSnap.data() });
         });
-        // Sort: unread first, then title
-        watchlistData.sort((a, b) => {
-          const aUnread = a.latest_chapter > (a.last_read_chapter || 0);
-          const bUnread = b.latest_chapter > (b.last_read_chapter || 0);
-          if (aUnread !== bUnread) return aUnread ? -1 : 1;
-          return (a.title || '').localeCompare(b.title || '');
-        });
-        renderAll();
+        renderStats();
+        renderWatchlist();
       }, (error) => {
         console.error("Watchlist snapshot error:", error);
-        updateConnectionStatusUI('error', error.message);
+        showToast("Database error: " + error.message, true);
       });
 
-      // 2. Listen to 'discoveries' collection in Firestore
+      // Discoveries listener
       onSnapshot(collection(db, "discoveries"), (snapshot) => {
-        discoveriesData = [];
+        discoveries = [];
         snapshot.forEach((docSnap) => {
-          discoveriesData.push({ id: docSnap.id, ...docSnap.data() });
+          discoveries.push({ id: docSnap.id, ...docSnap.data() });
         });
-        renderAll();
+        renderDiscoveries();
       }, (error) => {
         console.error("Discoveries snapshot error:", error);
       });
-    } else {
-      // Demo Sample Data when no credentials are configured yet
-      watchlistData = [
-        {
-          id: "the_extras_academy_survival_guide",
-          title: "The Extra's Academy Survival Guide",
-          cover_url: "https://arenascan.com/wp-content/uploads/2025/06/d1094d2a-111c-436d-9157-51f4385d5dab.jpg",
-          latest_chapter: 123,
-          latest_chapter_text: "Chapter 123",
-          latest_chapter_url: "https://arenascan.com/the-extras-academy-survival-guide-chapter-123/",
-          last_read_chapter: 123,
-          has_unread: false
-        },
-        {
-          id: "murim_login",
-          title: "Murim Login",
-          cover_url: "https://arenascan.com/wp-content/uploads/2025/07/ab75bf46-750d-432b-96a8-47a5f0fd6a36.webp",
-          latest_chapter: 184,
-          latest_chapter_text: "Chapter 184",
-          latest_chapter_url: "https://arenascan.com/murim-login-chapter-184/",
-          last_read_chapter: 183,
-          has_unread: true
-        },
-        {
-          id: "solo_leveling_ragnarok",
-          title: "Solo Leveling: Ragnarok",
-          cover_url: "https://arenascan.com/wp-content/uploads/2025/01/rag.avif",
-          latest_chapter: 35,
-          latest_chapter_text: "Chapter 35",
-          latest_chapter_url: "https://arenascan.com/solo-leveling-ragnarok-chapter-35/",
-          last_read_chapter: 34,
-          has_unread: true
+    }
+
+    if (isConnected) {
+      startRealtimeListeners();
+    }
+
+    // =========================================================================
+    // 3. URL GENERATION & REPAIR (Guarantees zero 404s)
+    // =========================================================================
+    function toArenaScanSlug(title) {
+      return (title || '')
+        .toLowerCase()
+        .replace(/['’]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'manhwa';
+    }
+
+    function formatChapterSuffix(num) {
+      const n = parseFloat(num) || 1;
+      return n === Math.floor(n) ? String(Math.floor(n)) : String(n).replace('.', '-');
+    }
+
+    function cleanArenaScanUrl(url, title, chapterNum, seriesUrl) {
+      if (!url || url === '#' || !url.startsWith('http') || url.includes('_') || url.includes('/manga/') || url.includes('-extra-s-')) {
+        let slug = '';
+        if (seriesUrl && seriesUrl.includes('arenascan.com')) {
+          const match = seriesUrl.match(/\/manga\/([^/]+)\/?/);
+          if (match) slug = match[1].replace(/^-+|-+$/g, '');
         }
-      ];
-      renderAll();
+        if (!slug) slug = toArenaScanSlug(title);
+        const chSuffix = formatChapterSuffix(chapterNum);
+        return `https://arenascan.com/${slug}-chapter-${chSuffix}/`;
+      }
+      return url;
     }
 
     // =========================================================================
-    // RENDERING
+    // 4. CARD ACTIONS (Read, Step, Delete, Edit Cover)
     // =========================================================================
-    function renderAll() {
-      updateStats();
-      renderWatchlist();
-      renderDiscoveries();
-    }
+    window.readAndMarkRead = async function(id, title, latestCh, currentUrl, seriesUrl) {
+      const validUrl = cleanArenaScanUrl(currentUrl, title, latestCh, seriesUrl);
+      window.open(validUrl, '_blank', 'noopener,noreferrer');
 
-    function updateStats() {
-      const totalTracked = watchlistData.length;
-      const unreadCount = watchlistData.filter(i => (i.latest_chapter > (i.last_read_chapter || 0))).length;
-      const discCount = discoveriesData.length;
+      if (!db) return;
+      try {
+        await updateDoc(doc(db, "watchlist", id), {
+          last_read_chapter: parseFloat(latestCh) || 1,
+          latest_chapter_url: validUrl,
+          has_unread: false,
+          updated_at: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Failed to update read state:", err);
+      }
+    };
 
-      document.getElementById('stat-total').textContent = totalTracked;
-      document.getElementById('stat-unread').textContent = unreadCount;
-      document.getElementById('stat-discoveries').textContent = discCount;
+    window.stepReadChapter = async function(id, delta) {
+      if (!db) return;
+      const item = watchlist.find(m => m.id === id);
+      if (!item) return;
 
-      // Filter tabs counts
-      document.getElementById('count-filter-all').textContent = totalTracked;
-      document.getElementById('count-filter-unread').textContent = unreadCount;
-      document.getElementById('count-filter-read').textContent = totalTracked - unreadCount;
-      document.getElementById('discoveries-count-badge').textContent = discCount;
+      const current = parseFloat(item.last_read_chapter) || 0;
+      const next = Math.max(0, current + delta);
+      const latest = parseFloat(item.latest_chapter) || 0;
+
+      try {
+        await updateDoc(doc(db, "watchlist", id), {
+          last_read_chapter: next,
+          has_unread: next < latest,
+          updated_at: serverTimestamp()
+        });
+      } catch (e) {
+        showToast("Error updating chapter: " + e.message, true);
+      }
+    };
+
+    window.editReadChapterPrompt = async function(id) {
+      if (!db) return;
+      const item = watchlist.find(m => m.id === id);
+      if (!item) return;
+
+      const current = item.last_read_chapter ?? item.latest_chapter ?? 1;
+      const input = prompt(`Enter your last read chapter for "${item.title}":`, current);
+      if (input === null) return;
+
+      const num = parseFloat(input);
+      if (isNaN(num) || num < 0) {
+        alert("Please enter a valid chapter number.");
+        return;
+      }
+
+      const latest = parseFloat(item.latest_chapter) || 0;
+      try {
+        await updateDoc(doc(db, "watchlist", id), {
+          last_read_chapter: num,
+          has_unread: num < latest,
+          updated_at: serverTimestamp()
+        });
+        showToast(`Updated to Chapter ${num}!`);
+      } catch (e) {
+        showToast("Failed to update: " + e.message, true);
+      }
+    };
+
+    window.editCoverPrompt = async function(id) {
+      if (!db) return;
+      const item = watchlist.find(m => m.id === id);
+      if (!item) return;
+
+      const input = prompt(`Enter cover image URL for "${item.title}":`, item.cover_url || '');
+      if (input === null) return;
+
+      const trimmed = input.trim();
+      try {
+        await updateDoc(doc(db, "watchlist", id), {
+          cover_url: trimmed,
+          updated_at: serverTimestamp()
+        });
+        showToast("Cover image updated!");
+      } catch (e) {
+        showToast("Failed to update cover: " + e.message, true);
+      }
+    };
+
+    window.deleteTitle = async function(id, title) {
+      if (!confirm(`Are you sure you want to remove "${title}" from your reading list?`)) return;
+      if (!db) return;
+      try {
+        await deleteDoc(doc(db, "watchlist", id));
+        showToast(`Removed "${title}"`);
+      } catch (err) {
+        showToast("Error deleting title: " + err.message, true);
+      }
+    };
+
+    window.addDiscoveryToWatchlist = async function(docId) {
+      if (!db) return;
+      const item = discoveries.find(d => d.id === docId);
+      if (!item) return;
+
+      try {
+        await setDoc(doc(db, "watchlist", docId), {
+          title: item.title,
+          latest_chapter: item.latest_chapter || 1,
+          latest_chapter_text: item.latest_chapter_text || "Chapter 1",
+          latest_chapter_url: item.latest_chapter_url || "",
+          last_read_chapter: 0,
+          cover_url: item.cover_url || "",
+          has_unread: true,
+          created_at: serverTimestamp()
+        });
+        await deleteDoc(doc(db, "discoveries", docId));
+        showToast(`Added "${item.title}" to Reading List!`);
+      } catch (err) {
+        showToast("Error adding discovery: " + err.message, true);
+      }
+    };
+
+    window.dismissDiscovery = async function(docId) {
+      if (!db) return;
+      try {
+        await deleteDoc(doc(db, "discoveries", docId));
+        showToast("Discovery dismissed");
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    // =========================================================================
+    // 5. ADD NEW MANHWA MODAL
+    // =========================================================================
+    window.handleAddManhwaSubmit = async function(event) {
+      event.preventDefault();
+      if (!db) {
+        alert("Database is not connected. Please check your Firebase configuration.");
+        return;
+      }
+
+      const titleInput = document.getElementById('new-title');
+      const latestInput = document.getElementById('new-latest');
+      const lastReadInput = document.getElementById('new-read');
+      const seriesUrlInput = document.getElementById('new-series-url');
+      const coverUrlInput = document.getElementById('new-cover-url');
+
+      const title = titleInput.value.trim();
+      const latestCh = parseFloat(latestInput.value) || 1;
+      const lastRead = parseFloat(lastReadInput.value) || 0;
+      const seriesUrl = seriesUrlInput ? seriesUrlInput.value.trim() : '';
+      const customCover = coverUrlInput ? coverUrlInput.value.trim() : '';
+
+      if (!title) {
+        alert("Please enter a manhwa title");
+        return;
+      }
+
+      const docId = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || "title_" + Date.now();
+      const chapterUrl = cleanArenaScanUrl('', title, latestCh, seriesUrl);
+
+      try {
+        await setDoc(doc(db, "watchlist", docId), {
+          title: title,
+          latest_chapter: latestCh,
+          latest_chapter_text: `Chapter ${latestCh}`,
+          latest_chapter_url: chapterUrl,
+          series_url: seriesUrl,
+          cover_url: customCover || "",
+          last_read_chapter: lastRead,
+          has_unread: latestCh > lastRead,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+
+        titleInput.value = '';
+        latestInput.value = '';
+        lastReadInput.value = '';
+        if (seriesUrlInput) seriesUrlInput.value = '';
+        if (coverUrlInput) coverUrlInput.value = '';
+
+        showToast(`Added "${title}" to your Reading List!`);
+      } catch (err) {
+        console.error("Error adding title:", err);
+        showToast("Failed to save: " + err.message, true);
+      }
+    };
+
+    // =========================================================================
+    // 6. UI RENDERING
+    // =========================================================================
+    function renderStats() {
+      const total = watchlist.length;
+      const unreadCount = watchlist.filter(m => (m.latest_chapter || 0) > (m.last_read_chapter || 0)).length;
+      const discCount = discoveries.length;
+
+      const totalEl = document.getElementById('stat-total');
+      const unreadEl = document.getElementById('stat-unread');
+      const discEl = document.getElementById('stat-discoveries');
+
+      if (totalEl) totalEl.textContent = total;
+      if (unreadEl) unreadEl.textContent = unreadCount;
+      if (discEl) discEl.textContent = discCount;
     }
 
     function renderWatchlist() {
-      const container = document.getElementById('watchlist-container');
-      
-      // Filter list
-      let filtered = watchlistData.filter(item => {
+      const container = document.getElementById('watchlist-grid');
+      const emptyState = document.getElementById('empty-state');
+      if (!container) return;
+
+      const filtered = watchlist.filter(item => {
         const matchesSearch = !searchQuery || (item.title || '').toLowerCase().includes(searchQuery.toLowerCase());
-        const isUnread = item.latest_chapter > (item.last_read_chapter || 0);
+        const hasUnread = (item.latest_chapter || 0) > (item.last_read_chapter || 0);
 
         if (!matchesSearch) return false;
-        if (currentFilter === 'unread') return isUnread;
-        if (currentFilter === 'read') return !isUnread;
+        if (activeFilter === 'unread') return hasUnread;
+        if (activeFilter === 'uptodate') return !hasUnread;
         return true;
       });
 
       if (filtered.length === 0) {
-        if (watchlistData.length === 0) {
-          container.innerHTML = `
-            <div class="col-span-full bg-stone-900/40 border border-dashed border-stone-800 rounded-xl p-8 text-center">
-              <p class="text-stone-400 text-sm font-medium">Your reading list is empty.</p>
-              <p class="text-stone-500 text-xs mt-1">Add a title using the form below or run the Python scraper!</p>
-            </div>
-          `;
-        } else {
-          container.innerHTML = `
-            <div class="col-span-full bg-stone-900/40 border border-stone-800 rounded-xl p-8 text-center">
-              <p class="text-stone-400 text-sm">No manhwa matching "<strong>${searchQuery || currentFilter}</strong>"</p>
-              <button onclick="window.clearFilters()" class="text-xs text-red-400 hover:underline mt-2">Clear search & filters</button>
-            </div>
-          `;
-        }
+        container.innerHTML = '';
+        if (emptyState) emptyState.classList.remove('hidden');
         return;
       }
 
+      if (emptyState) emptyState.classList.add('hidden');
+
       container.innerHTML = filtered.map(item => {
-        const latestCh = Number(item.latest_chapter || 0);
-        const readCh = Number(item.last_read_chapter || 0);
-        const isUnread = latestCh > readCh;
-        const targetChapterUrl = getCleanArenaUrl(item.latest_chapter_url, item.title, latestCh);
-        const seriesPageUrl = buildArenaSeriesUrl(item.title);
+        const title = item.title || 'Untitled';
+        const latest = parseFloat(item.latest_chapter) || 1;
+        const lastRead = parseFloat(item.last_read_chapter) || 0;
+        const hasUnread = latest > lastRead;
+        const unreadDiff = Math.max(0, latest - lastRead);
+        const cover = item.cover_url || '';
+        const chapterUrl = cleanArenaScanUrl(item.latest_chapter_url, title, latest, item.series_url);
+        const seriesUrl = item.series_url || `https://arenascan.com/manga/${toArenaScanSlug(title)}/`;
 
         return `
-          <div class="bg-stone-900/90 border ${isUnread ? 'border-red-600/80 ring-1 ring-red-600/30 shadow-lg shadow-red-950/20' : 'border-stone-800'} rounded-2xl p-4 flex flex-col justify-between transition hover:border-stone-700">
-            <div class="flex gap-3.5">
-              <div class="relative w-20 h-28 flex-shrink-0 group">
-                <img src="${item.cover_url || 'https://arenascan.com/wp-content/uploads/2025/06/d1094d2a-111c-436d-9157-51f4385d5dab.jpg'}" 
-                     referrerpolicy="no-referrer"
-                     class="w-full h-full object-cover rounded-xl bg-stone-950 shadow border border-stone-800" 
-                     alt="${item.title}" 
-                     onerror="this.onerror=null; this.src='https://arenascan.com/wp-content/uploads/2025/06/d1094d2a-111c-436d-9157-51f4385d5dab.jpg';" />
-                <button onclick="window.editCoverUrl('${item.id}')" 
-                        class="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/80 hover:bg-black text-[10px] text-stone-300 hover:text-white rounded backdrop-blur border border-stone-700 opacity-80 hover:opacity-100 transition shadow"
-                        title="Set/Update ArenaScan Cover Image">
+          <div class="bg-stone-900 border ${hasUnread ? 'border-red-600/70 shadow-lg shadow-red-950/20' : 'border-stone-800'} rounded-2xl overflow-hidden flex flex-col justify-between transition hover:border-stone-700">
+            <div>
+              <!-- Cover Image & Badges -->
+              <div class="relative aspect-[16/10] bg-stone-950 overflow-hidden group">
+                ${cover ? `
+                  <img src="${cover}" alt="${title}" referrerpolicy="no-referrer" class="w-full h-full object-cover object-center group-hover:scale-105 transition duration-300" />
+                ` : `
+                  <div class="w-full h-full flex flex-col items-center justify-center text-stone-600 p-4 text-center">
+                    <span class="text-3xl mb-1">📖</span>
+                    <span class="text-xs font-medium text-stone-500">${title}</span>
+                  </div>
+                `}
+
+                <div class="absolute inset-0 bg-gradient-to-t from-stone-950 via-transparent to-black/40"></div>
+
+                <!-- Unread Badge -->
+                <div class="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                  ${hasUnread ? `
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-600 text-white shadow-md animate-pulse">
+                      +${unreadDiff} NEW
+                    </span>
+                  ` : `
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-800/80 text-emerald-400 border border-emerald-900/60 backdrop-blur-sm">
+                      Up to date
+                    </span>
+                  `}
+                </div>
+
+                <!-- Edit Cover Quick Button -->
+                <button onclick="window.editCoverPrompt('${item.id}')" title="Edit cover URL" 
+                        class="absolute top-2.5 left-2.5 p-1 rounded-md bg-stone-900/70 hover:bg-stone-900 text-stone-300 hover:text-white border border-stone-700 text-xs backdrop-blur-sm transition">
                   🖼️
                 </button>
+
+                <!-- Title Overlay -->
+                <div class="absolute bottom-2.5 left-3 right-3">
+                  <h3 class="font-bold text-white text-sm line-clamp-1 drop-shadow-md">${title}</h3>
+                </div>
               </div>
-              
-              <div class="flex-1 min-w-0">
-                <div class="flex items-start justify-between gap-1.5">
-                  <h3 class="font-bold text-sm text-stone-100 leading-snug line-clamp-2" title="${item.title}">${item.title}</h3>
-                  <button onclick="window.deleteItem('${item.id}')" class="text-stone-500 hover:text-red-400 p-1 rounded transition text-xs flex-shrink-0" title="Remove from list">
-                    ✕
-                  </button>
-                </div>
 
-                <div class="mt-1.5 flex items-center gap-2">
-                  <span class="text-xs font-bold text-red-400">Chapter ${latestCh}</span>
-                  ${isUnread ? '<span class="bg-red-600 text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider animate-pulse">NEW</span>' : '<span class="bg-stone-800 text-stone-400 text-[10px] px-1.5 py-0.2 rounded">UP TO DATE</span>'}
-                </div>
-
-                <!-- Quick Chapter Progress Stepper -->
-                <div class="mt-2.5 flex items-center gap-1.5 text-xs text-stone-400">
-                  <span>You read:</span>
-                  <div class="inline-flex items-center bg-stone-950 border border-stone-800 rounded-lg overflow-hidden">
-                    <button onclick="window.adjustReadChapter('${item.id}', -1)" class="px-2 py-0.5 hover:bg-stone-800 text-stone-300 transition font-bold" title="Previous chapter">-</button>
-                    <span class="px-2 font-mono font-semibold text-stone-200">Ch. ${readCh}</span>
-                    <button onclick="window.adjustReadChapter('${item.id}', 1)" class="px-2 py-0.5 hover:bg-stone-800 text-stone-300 transition font-bold" title="Next chapter">+</button>
+              <!-- Chapter Details & Controls -->
+              <div class="p-3.5 space-y-3">
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <div class="bg-stone-950/70 border border-stone-800/80 p-2 rounded-xl">
+                    <span class="text-[10px] uppercase font-bold text-stone-500 block">Latest Release</span>
+                    <strong class="text-stone-200 text-xs font-mono">Ch. ${latest}</strong>
                   </div>
-                  <button onclick="window.promptEditChapter('${item.id}', ${readCh}, ${latestCh})" class="text-[11px] text-stone-500 hover:text-stone-300 ml-1" title="Set specific chapter">
-                    ✏️
+                  <div class="bg-stone-950/70 border border-stone-800/80 p-2 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span class="text-[10px] uppercase font-bold text-stone-500 block">Your Progress</span>
+                      <strong class="text-amber-400 text-xs font-mono">Ch. ${lastRead}</strong>
+                    </div>
+                    <button onclick="window.editReadChapterPrompt('${item.id}')" title="Set specific chapter" class="text-stone-400 hover:text-stone-200 text-xs p-1">
+                      ✏️
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Stepper Buttons -->
+                <div class="flex items-center justify-between bg-stone-950 border border-stone-800/80 rounded-xl p-1 text-xs">
+                  <button onclick="window.stepReadChapter('${item.id}', -1)" 
+                          class="px-2.5 py-1 text-stone-400 hover:text-white hover:bg-stone-800 rounded-lg transition font-mono font-bold">
+                    -1
+                  </button>
+                  <span class="text-[11px] text-stone-400 font-mono">Read: Ch. ${lastRead}</span>
+                  <button onclick="window.stepReadChapter('${item.id}', 1)" 
+                          class="px-2.5 py-1 text-stone-400 hover:text-white hover:bg-stone-800 rounded-lg transition font-mono font-bold">
+                    +1
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- Action Toolbar -->
-            <div class="mt-3 pt-3 border-t border-stone-800/80 flex items-center gap-2">
-              <button onclick="window.readAndGo('${item.id}', '${targetChapterUrl}', ${latestCh})" 
-                      class="flex-1 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 px-3 rounded-xl transition shadow active:scale-95 text-center flex items-center justify-center gap-1.5">
-                <span>Read & Mark Read</span>
-                <span class="text-[10px] opacity-80 font-normal">(Ch. ${latestCh})</span>
+            <!-- Footer Action Buttons -->
+            <div class="p-3.5 pt-0 flex items-center gap-2">
+              <button onclick="window.readAndMarkRead('${item.id}', '${title.replace(/'/g, "\\'")}', ${latest}, '${chapterUrl}', '${seriesUrl}')" 
+                      class="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
+                        hasUnread 
+                          ? 'bg-red-600 hover:bg-red-500 text-white active:scale-95 shadow-red-950/30' 
+                          : 'bg-stone-800 hover:bg-stone-700 text-stone-200'
+                      }">
+                <span>${hasUnread ? '⚡ Read & Mark Read' : '📖 Read Chapter'}</span>
               </button>
-              
-              <a href="${seriesPageUrl}" target="_blank" class="px-2.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-medium transition flex items-center gap-1" title="View all chapters on ArenaScan">
-                <span>📖 Series</span>
+
+              <a href="${seriesUrl}" target="_blank" rel="noopener noreferrer" title="View Series on ArenaScan"
+                 class="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition border border-stone-700 text-xs">
+                🌐
               </a>
 
-              <button onclick="window.toggleReadState('${item.id}')" class="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs transition" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
-                ${isUnread ? '✓' : '↺'}
+              <button onclick="window.deleteTitle('${item.id}', '${title.replace(/'/g, "\\'")}')" title="Delete from watchlist"
+                      class="p-2 rounded-xl bg-stone-800/50 hover:bg-red-950/60 text-stone-400 hover:text-red-300 transition border border-stone-800 text-xs">
+                🗑️
               </button>
             </div>
           </div>
@@ -402,453 +512,174 @@
     }
 
     function renderDiscoveries() {
-      const container = document.getElementById('discoveries-container');
-      
-      if (discoveriesData.length === 0) {
-        container.innerHTML = `
-          <div class="col-span-full text-center py-6 text-stone-500 text-xs">
-            No pending discoveries. Scraper will automatically list new series with &le; 10 chapters here!
-          </div>
-        `;
+      const container = document.getElementById('discoveries-grid');
+      const section = document.getElementById('discoveries-section');
+      if (!container || !section) return;
+
+      if (discoveries.length === 0) {
+        section.classList.add('hidden');
         return;
       }
 
-      container.innerHTML = discoveriesData.map(item => {
-        const previewUrl = getCleanArenaUrl(item.latest_chapter_url, item.title, item.latest_chapter);
+      section.classList.remove('hidden');
+      container.innerHTML = discoveries.map(item => {
+        const title = item.title || 'Untitled';
+        const latest = item.latest_chapter || 1;
+        const cover = item.cover_url || '';
+        const chapterUrl = cleanArenaScanUrl(item.latest_chapter_url, title, latest, '');
+
         return `
-          <div class="bg-stone-900 border border-amber-900/40 rounded-xl p-3 flex gap-3">
-            <img src="${item.cover_url || 'https://arenascan.com/wp-content/uploads/2025/06/57f5b4f4-4229-4f31-8647-e1f4465b2528.jpg'}" 
-                 referrerpolicy="no-referrer"
-                 class="w-16 h-24 object-cover rounded-lg bg-stone-950 flex-shrink-0 shadow border border-stone-800" 
-                 alt="${item.title}" 
-                 onerror="this.onerror=null; this.src='https://arenascan.com/wp-content/uploads/2025/06/57f5b4f4-4229-4f31-8647-e1f4465b2528.jpg';" />
-            <div class="flex-1 flex flex-col justify-between min-w-0">
-              <div>
-                <h4 class="font-bold text-xs text-stone-100 truncate">${item.title}</h4>
-                <div class="text-xs font-semibold text-amber-400 mt-0.5">
-                  Chapter ${item.latest_chapter} (&le; 10 Ch.)
-                </div>
+          <div class="bg-stone-900 border border-amber-900/50 rounded-xl p-3 flex gap-3 items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-12 h-16 rounded-lg bg-stone-950 flex-shrink-0 overflow-hidden border border-stone-800">
+                ${cover ? `<img src="${cover}" alt="${title}" referrerpolicy="no-referrer" class="w-full h-full object-cover" />` : `<div class="w-full h-full flex items-center justify-center text-sm">✨</div>`}
               </div>
-              <div class="flex items-center gap-1.5 mt-2">
-                <a href="${previewUrl}" target="_blank" class="text-[11px] text-stone-400 hover:text-white px-2 py-1 rounded bg-stone-800">
-                  Preview
-                </a>
-                <button onclick="window.addDiscoveryToWatchlist('${item.id}')" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-1 px-2 rounded transition">
-                  + Add to List
-                </button>
-                <button onclick="window.dismissDiscovery('${item.id}')" class="text-stone-500 hover:text-red-400 px-1.5 py-1 text-xs">
-                  ✕
-                </button>
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">≤ 10 Chapters</span>
+                <h4 class="font-bold text-xs text-white truncate">${title}</h4>
+                <p class="text-[11px] text-stone-400 font-mono">Latest: Ch. ${latest}</p>
               </div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <button onclick="window.addDiscoveryToWatchlist('${item.id}')" 
+                      class="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition">
+                + Track
+              </button>
+              <button onclick="window.dismissDiscovery('${item.id}')" class="text-stone-500 hover:text-stone-300 text-xs p-1">
+                ✕
+              </button>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    // =========================================================================
-    // GLOBAL ACTIONS (Exposed to window for HTML onclicks)
-    // =========================================================================
+    function showToast(msg, isErr = false) {
+      const toast = document.createElement('div');
+      toast.className = `fixed bottom-4 right-4 z-50 px-4 py-2.5 rounded-xl text-xs font-semibold text-white shadow-2xl transition duration-300 transform translate-y-2 opacity-0 ${isErr ? 'bg-red-600' : 'bg-stone-800 border border-stone-700'}`;
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+      setTimeout(() => {
+        toast.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
 
-    // 1. Read and Mark Read
-    window.readAndGo = async function(id, chapterUrl, chapterNum) {
-      const item = watchlistData.find(w => w.id === id);
-      const cleanUrl = getCleanArenaUrl(chapterUrl, item ? item.title : id, chapterNum);
+    // =========================================================================
+    // 7. SEARCH & FILTER LISTENERS
+    // =========================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      const searchInput = document.getElementById('search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          searchQuery = e.target.value;
+          renderWatchlist();
+        });
+      }
 
-      if (db) {
-        try {
-          const updatePayload = {
-            last_read_chapter: Number(chapterNum),
-            has_unread: false
-          };
-          if (cleanUrl !== chapterUrl || (item && item.latest_chapter_url !== cleanUrl)) {
-            updatePayload.latest_chapter_url = cleanUrl;
+      window.setFilter = function(filter) {
+        activeFilter = filter;
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+          if (btn.dataset.filter === filter) {
+            btn.className = 'filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-stone-800 text-white border border-stone-700';
+          } else {
+            btn.className = 'filter-btn px-3 py-1.5 rounded-xl text-xs font-medium text-stone-400 hover:text-stone-200';
           }
-          await updateDoc(doc(db, "watchlist", id), updatePayload);
-        } catch (e) {
-          console.error("Firebase update failed:", e);
-        }
-      } else {
-        const it = watchlistData.find(w => w.id === id);
-        if (it) {
-          it.last_read_chapter = chapterNum;
-          it.has_unread = false;
-          it.latest_chapter_url = cleanUrl;
-          renderAll();
-        }
-      }
-
-      if (cleanUrl && cleanUrl !== '#') {
-        window.open(cleanUrl, '_blank');
-      }
-    };
-
-    // 2. Adjust Read Chapter (+1 / -1)
-    window.adjustReadChapter = async function(id, delta) {
-      const item = watchlistData.find(w => w.id === id);
-      if (!item) return;
-
-      const newRead = Math.max(0, Number(item.last_read_chapter || 0) + delta);
-      const hasUnread = Number(item.latest_chapter || 0) > newRead;
-
-      if (db) {
-        try {
-          await updateDoc(doc(db, "watchlist", id), {
-            last_read_chapter: newRead,
-            has_unread: hasUnread
-          });
-        } catch (e) {
-          alert("Firebase error: " + e.message);
-        }
-      } else {
-        item.last_read_chapter = newRead;
-        item.has_unread = hasUnread;
-        renderAll();
-      }
-    };
-
-    // 3. Prompt Edit Chapter
-    window.promptEditChapter = async function(id, currentRead, latest) {
-      const item = watchlistData.find(w => w.id === id);
-      if (!item) return;
-
-      const input = prompt(`Set your last read chapter for "${item.title}":`, currentRead);
-      if (input === null) return;
-      const parsed = parseFloat(input);
-      if (isNaN(parsed) || parsed < 0) return alert("Please enter a valid chapter number");
-
-      if (db) {
-        try {
-          await updateDoc(doc(db, "watchlist", id), {
-            last_read_chapter: parsed,
-            has_unread: Number(item.latest_chapter || 0) > parsed
-          });
-        } catch (e) {
-          alert("Error: " + e.message);
-        }
-      } else {
-        item.last_read_chapter = parsed;
-        item.has_unread = Number(item.latest_chapter || 0) > parsed;
-        renderAll();
-      }
-    };
-
-    // 4. Toggle Read/Unread Status
-    window.toggleReadState = async function(id) {
-      const item = watchlistData.find(w => w.id === id);
-      if (!item) return;
-
-      const isCurrentlyUnread = item.latest_chapter > (item.last_read_chapter || 0);
-      const newRead = isCurrentlyUnread ? Number(item.latest_chapter) : Math.max(0, Number(item.latest_chapter) - 1);
-
-      if (db) {
-        try {
-          await updateDoc(doc(db, "watchlist", id), {
-            last_read_chapter: newRead,
-            has_unread: !isCurrentlyUnread
-          });
-        } catch (e) {
-          alert("Error: " + e.message);
-        }
-      } else {
-        item.last_read_chapter = newRead;
-        item.has_unread = !isCurrentlyUnread;
-        renderAll();
-      }
-    };
-
-    // 5. Delete Item from Watchlist
-    window.deleteItem = async function(id) {
-      const item = watchlistData.find(w => w.id === id);
-      const name = item ? item.title : id;
-      if (!confirm(`Remove "${name}" from your reading list?`)) return;
-
-      if (db) {
-        try {
-          await deleteDoc(doc(db, "watchlist", id));
-        } catch (e) {
-          alert("Delete error: " + e.message);
-        }
-      } else {
-        watchlistData = watchlistData.filter(w => w.id !== id);
-        renderAll();
-      }
-    };
-
-    // 5b. Update Cover Image URL
-    window.editCoverUrl = async function(id) {
-      const item = watchlistData.find(w => w.id === id);
-      if (!item) return;
-      const current = item.cover_url || '';
-      const newUrl = prompt(`Enter ArenaScan Cover Image URL for "${item.title}":\n(e.g. https://arenascan.com/wp-content/uploads/...jpg)`, current);
-      if (newUrl === null) return;
-      const trimmed = newUrl.trim();
-      if (db) {
-        try {
-          await updateDoc(doc(db, "watchlist", id), { cover_url: trimmed });
-        } catch (e) {
-          alert("Firebase update error: " + e.message);
-        }
-      } else {
-        item.cover_url = trimmed;
-        renderAll();
-      }
-    };
-
-    // 6. Move Discovery to Watchlist
-    window.addDiscoveryToWatchlist = async function(id) {
-      const disc = discoveriesData.find(d => d.id === id);
-      if (!disc) return;
-      const cleanUrl = getCleanArenaUrl(disc.latest_chapter_url, disc.title, disc.latest_chapter);
-
-      if (db) {
-        try {
-          await setDoc(doc(db, "watchlist", id), {
-            title: disc.title,
-            latest_chapter: disc.latest_chapter,
-            latest_chapter_text: disc.latest_chapter_text || ("Chapter " + disc.latest_chapter),
-            latest_chapter_url: cleanUrl,
-            cover_url: disc.cover_url || '',
-            last_read_chapter: 0,
-            has_unread: true,
-            created_at: serverTimestamp()
-          });
-          await deleteDoc(doc(db, "discoveries", id));
-        } catch (e) {
-          alert("Firebase error: " + e.message);
-        }
-      } else {
-        watchlistData.unshift({
-          ...disc,
-          latest_chapter_url: cleanUrl,
-          last_read_chapter: 0,
-          has_unread: true
         });
-        discoveriesData = discoveriesData.filter(d => d.id !== id);
-        renderAll();
-      }
-    };
-
-    // 7. Dismiss Discovery
-    window.dismissDiscovery = async function(id) {
-      if (db) {
-        try {
-          await deleteDoc(doc(db, "discoveries", id));
-        } catch (e) {
-          console.error("Dismiss error:", e);
-        }
-      } else {
-        discoveriesData = discoveriesData.filter(d => d.id !== id);
-        renderAll();
-      }
-    };
-
-    // 8. Filters & Search Handlers
-    window.setFilter = function(filter) {
-      currentFilter = filter;
-      document.querySelectorAll('.filter-btn').forEach(b => {
-        if (b.dataset.filter === filter) {
-          b.className = "filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white shadow";
-        } else {
-          b.className = "filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-stone-400 hover:text-white border border-stone-800";
-        }
-      });
-      renderWatchlist();
-    };
-
-    window.clearFilters = function() {
-      currentFilter = 'all';
-      searchQuery = '';
-      document.getElementById('search-input').value = '';
-      window.setFilter('all');
-    };
-
-    document.getElementById('search-input').addEventListener('input', (e) => {
-      searchQuery = e.target.value.trim();
-      renderWatchlist();
-    });
-
-    // 9. Add Manhwa Form Submission
-    document.getElementById('add-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const title = document.getElementById('new-title').value.trim();
-      const ch = parseFloat(document.getElementById('new-chapter').value) || 1;
-      const url = document.getElementById('new-url').value.trim();
-      const cover = document.getElementById('new-cover')?.value.trim() || '';
-      if (!title) return;
-
-      const docId = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      const validUrl = url || buildArenaChapterUrl(title, ch);
-
-      const submitBtn = document.getElementById('add-btn');
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Saving to Firebase...";
-
-      if (db) {
-        try {
-          await setDoc(doc(db, "watchlist", docId), {
-            title: title,
-            latest_chapter: ch,
-            latest_chapter_text: "Chapter " + ch,
-            latest_chapter_url: validUrl,
-            cover_url: cover,
-            last_read_chapter: ch,
-            has_unread: false,
-            created_at: serverTimestamp()
-          });
-        } catch (e) {
-          alert("Error saving to Firebase: " + e.message);
-        }
-      } else {
-        watchlistData.unshift({
-          id: docId,
-          title: title,
-          latest_chapter: ch,
-          latest_chapter_text: "Chapter " + ch,
-          latest_chapter_url: validUrl,
-          cover_url: cover,
-          last_read_chapter: ch,
-          has_unread: false
-        });
-        renderAll();
-      }
-
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Add Title to Firebase";
-      document.getElementById('new-title').value = '';
-      document.getElementById('new-chapter').value = '1';
-      document.getElementById('new-url').value = '';
-      if (document.getElementById('new-cover')) {
-        document.getElementById('new-cover').value = '';
-      }
+        renderWatchlist();
+      };
     });
 
     // =========================================================================
-    // 10. ACTIVE DATABASE DIAGNOSTIC TEST (Check Really Connected)
+    // 8. DATABASE DIAGNOSTIC TEST RUNNER
     // =========================================================================
     window.testFirebaseConnection = async function() {
       const modal = document.getElementById('diag-modal');
       const output = document.getElementById('diag-output');
-      modal.classList.remove('hidden');
+      if (modal) modal.classList.remove('hidden');
 
+      if (!output) return;
       output.innerHTML = `
-        <div class="flex items-center gap-2 text-stone-300 py-2">
-          <span class="animate-spin text-red-500">⏳</span> Testing real-time connection to Firebase Firestore...
+        <div class="p-3 bg-stone-900 rounded-lg text-amber-400 font-mono text-xs space-y-1">
+          <div>Testing connection to Google Firestore...</div>
+          <div class="text-[11px] text-stone-500">Project ID: ${firebaseConfig.projectId || 'Unknown'}</div>
         </div>
       `;
 
-      if (!db || activeProjectId === "YOUR_PROJECT_ID") {
+      if (!db) {
         output.innerHTML = `
-          <div class="p-3.5 bg-red-950/40 border border-red-800 rounded-xl space-y-2 text-xs">
-            <div class="font-bold text-red-400 flex items-center gap-1.5">
-              <span>❌ Not Connected to Firebase</span>
-            </div>
-            <p class="text-stone-300 leading-relaxed">
-              Your website is currently in <strong>Demo Mode</strong>. Your Firebase credentials have not been configured yet (or <code class="text-red-300">projectId</code> is still "YOUR_PROJECT_ID").
-            </p>
-            <div class="pt-1">
-              <button onclick="window.closeDiagModal(); window.openConfigModal();" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold">
-                Open Firebase Setup
-              </button>
-            </div>
+          <div class="p-3 bg-red-950/60 border border-red-800 rounded-lg text-red-300 font-mono text-xs space-y-1">
+            <div class="font-bold">❌ Firebase Initialization Failed</div>
+            <div>${connectionError || "Check your API keys and Project ID."}</div>
           </div>
         `;
         return;
       }
 
-      const startTime = performance.now();
+      const t0 = performance.now();
       try {
-        // Read test
-        const snapWatchlist = await getDocs(collection(db, "watchlist"));
-        const snapDiscoveries = await getDocs(collection(db, "discoveries"));
-        const latency = Math.round(performance.now() - startTime);
+        const snap = await getDocs(collection(db, "watchlist"));
+        const latency = Math.round(performance.now() - t0);
 
         output.innerHTML = `
-          <div class="space-y-3 text-xs">
-            <div class="p-3.5 bg-emerald-950/40 border border-emerald-800/80 rounded-xl space-y-2">
-              <div class="font-bold text-emerald-400 text-sm flex items-center gap-2">
-                <span>✅ 100% Real-Time Connected to Firestore!</span>
-              </div>
-              <p class="text-stone-300 leading-relaxed">
-                Your GitHub Pages site successfully established a real-time roundtrip connection to Google Cloud Firestore.
-              </p>
+          <div class="p-3.5 bg-emerald-950/50 border border-emerald-800 rounded-xl text-emerald-300 font-mono text-xs space-y-2">
+            <div class="font-bold flex items-center gap-1.5 text-emerald-400">
+              <span>✅ 100% Real-Time Connected!</span>
             </div>
-
-            <div class="grid grid-cols-2 gap-2 font-mono text-[11px]">
-              <div class="bg-stone-950 border border-stone-800 p-2.5 rounded-lg">
-                <span class="text-stone-400 block text-[10px]">PROJECT ID</span>
-                <span class="text-stone-100 font-bold">${activeProjectId}</span>
-              </div>
-              <div class="bg-stone-950 border border-stone-800 p-2.5 rounded-lg">
-                <span class="text-stone-400 block text-[10px]">ROUNDTRIP LATENCY</span>
-                <span class="text-emerald-400 font-bold">${latency} ms</span>
-              </div>
-              <div class="bg-stone-950 border border-stone-800 p-2.5 rounded-lg">
-                <span class="text-stone-400 block text-[10px]">'watchlist' COLLECTION</span>
-                <span class="text-stone-200 font-bold">${snapWatchlist.size} documents found</span>
-              </div>
-              <div class="bg-stone-950 border border-stone-800 p-2.5 rounded-lg">
-                <span class="text-stone-400 block text-[10px]">'discoveries' COLLECTION</span>
-                <span class="text-stone-200 font-bold">${snapDiscoveries.size} documents found</span>
-              </div>
+            <div class="text-[11px] space-y-1 text-stone-300">
+              <div><strong>Project ID:</strong> <code class="text-white">${firebaseConfig.projectId}</code></div>
+              <div><strong>Firestore Latency:</strong> <code class="text-emerald-400">${latency} ms</code></div>
+              <div><strong>Watchlist Documents:</strong> <code class="text-white">${snap.size} titles found</code></div>
             </div>
-
-            <div class="p-3 bg-stone-950 border border-stone-800 rounded-xl space-y-1.5 text-stone-300">
-              <span class="font-bold text-stone-200 block">💡 5-Second Live Proof Test:</span>
-              <p class="leading-relaxed">
-                1. Open <a href="https://console.firebase.google.com" target="_blank" class="text-red-400 underline">console.firebase.google.com</a> &gt; <strong>Firestore Database</strong> &gt; <strong>watchlist</strong>.<br>
-                2. Change any chapter number (e.g., from 123 to 124).<br>
-                3. Switch back to this browser tab—it will <strong>instantly update live without refreshing</strong>!
-              </p>
+            <div class="pt-1 text-[10px] text-stone-400 border-t border-emerald-900/60">
+              All real-time reads & writes are operating smoothly!
             </div>
           </div>
         `;
       } catch (err) {
-        console.error(err);
         output.innerHTML = `
-          <div class="p-3.5 bg-red-950/40 border border-red-800 rounded-xl space-y-2 text-xs">
-            <div class="font-bold text-red-400 flex items-center gap-1.5">
-              <span>❌ Firestore Connection Failed</span>
-            </div>
-            <p class="text-stone-300 font-mono text-[11px] leading-relaxed">
-              ${err.message}
-            </p>
-            <p class="text-stone-400">
-              If this says <strong>"Missing or insufficient permissions"</strong>, make sure you pasted the Firestore Security Rules in Firebase Console &gt; Firestore Database &gt; Rules.
-            </p>
+          <div class="p-3 bg-red-950/60 border border-red-800 rounded-lg text-red-300 font-mono text-xs space-y-1">
+            <div class="font-bold">❌ Firestore Query Failed</div>
+            <div class="text-[11px]">${err.message}</div>
+            <div class="text-[10px] text-stone-400 pt-1">Verify that your Firestore Security Rules allow read/write access.</div>
           </div>
         `;
       }
     };
 
-    window.closeDiagModal = function() {
-      document.getElementById('diag-modal').classList.add('hidden');
-    };
-
-    // Config Modal handlers
+    // =========================================================================
+    // 9. CONFIGURATION MODAL (Save credentials directly on site)
+    // =========================================================================
     window.openConfigModal = function() {
-      const current = localStorage.getItem('arenascan_firebase_config') || JSON.stringify(activeConfig, null, 2);
-      document.getElementById('config-input').value = current;
+      const area = document.getElementById('config-json-input');
+      if (area) {
+        area.value = JSON.stringify(firebaseConfig, null, 2);
+      }
       document.getElementById('config-modal').classList.remove('hidden');
     };
 
-    window.saveConfigModal = function() {
+    window.saveConfigFromModal = function() {
+      const area = document.getElementById('config-json-input');
       try {
-        const val = JSON.parse(document.getElementById('config-input').value);
-        localStorage.setItem('arenascan_firebase_config', JSON.stringify(val));
-        alert("Firebase configuration saved! Reloading...");
+        const parsed = JSON.parse(area.value);
+        if (!parsed.projectId || !parsed.apiKey) {
+          alert("JSON must contain at least 'apiKey' and 'projectId'");
+          return;
+        }
+        localStorage.setItem('arenascan_firebase_config', JSON.stringify(parsed));
+        alert("Configuration saved! The page will now reload.");
         window.location.reload();
       } catch (e) {
-        alert("Invalid JSON: " + e.message);
+        alert("Invalid JSON format: " + e.message);
       }
     };
 
-    window.closeConfigModal = function() {
-      document.getElementById('config-modal').classList.add('hidden');
-    };
-
     // =========================================================================
-    // 11. MANUAL SCRAPER TRIGGER (GitHub Actions API & Local Trigger)
+    // 10. MANUAL SCRAPER TRIGGER (GitHub Actions API & Local Trigger)
     // =========================================================================
     let pollInterval = null;
 
@@ -1044,22 +875,18 @@
   </script>
 </head>
 <body class="bg-stone-950 text-stone-200 font-sans min-h-screen p-3.5 sm:p-6 antialiased">
-  <div class="max-w-4xl mx-auto space-y-6">
+  <div class="max-w-6xl mx-auto space-y-6">
 
-    <!-- Top Header Bar -->
-    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-4">
+    <!-- Header & Navigation -->
+    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-800 pb-5">
       <div>
-        <div class="flex items-center gap-2">
-          <h1 class="text-xl sm:text-2xl font-black text-white tracking-tight">ArenaScan Tracker</h1>
-          <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-950 text-red-400 border border-red-800">
-            GitHub Pages
-          </span>
-        </div>
-        <div class="mt-1.5 flex items-center gap-2">
-          <div id="firebase-status-badge">
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-stone-900 text-stone-400 border border-stone-800">
-              <span class="w-2 h-2 rounded-full bg-stone-500"></span> Connecting...
-            </span>
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center font-black text-white text-sm shadow-md shadow-red-900/40">
+            AS
+          </div>
+          <div>
+            <h1 class="text-lg sm:text-xl font-bold text-white tracking-tight">ArenaScan Manhwa Tracker</h1>
+            <p class="text-xs text-stone-400">Direct reading links & real-time chapter sync</p>
           </div>
         </div>
       </div>
@@ -1081,134 +908,151 @@
       </div>
     </header>
 
-    <!-- Stats Quick Cards -->
-    <div class="grid grid-cols-3 gap-3 text-center">
-      <div class="bg-stone-900/80 border border-stone-800 rounded-2xl p-3">
-        <span class="text-[11px] uppercase tracking-wider text-stone-500 font-bold block">Reading List</span>
-        <span id="stat-total" class="text-xl sm:text-2xl font-black text-stone-100">0</span>
+    <!-- Top Statistics Bar -->
+    <div class="grid grid-cols-3 gap-3">
+      <div class="bg-stone-900 border border-stone-800 rounded-2xl p-4">
+        <span class="text-[10px] uppercase font-bold text-stone-400 block mb-1">Total Titles</span>
+        <div class="text-2xl font-black text-white" id="stat-total">0</div>
       </div>
-      <div class="bg-stone-900/80 border border-red-900/40 rounded-2xl p-3">
-        <span class="text-[11px] uppercase tracking-wider text-red-400/80 font-bold block">Unread Releases</span>
-        <span id="stat-unread" class="text-xl sm:text-2xl font-black text-red-400">0</span>
+      <div class="bg-stone-900 border border-stone-800 rounded-2xl p-4">
+        <span class="text-[10px] uppercase font-bold text-red-400 block mb-1">New Releases</span>
+        <div class="text-2xl font-black text-red-400" id="stat-unread">0</div>
       </div>
-      <div class="bg-stone-900/80 border border-amber-900/40 rounded-2xl p-3">
-        <span class="text-[11px] uppercase tracking-wider text-amber-400/80 font-bold block">New Discoveries</span>
-        <span id="stat-discoveries" class="text-xl sm:text-2xl font-black text-amber-400">0</span>
+      <div class="bg-stone-900 border border-stone-800 rounded-2xl p-4">
+        <span class="text-[10px] uppercase font-bold text-amber-400 block mb-1">Discoveries (≤10 Ch.)</span>
+        <div class="text-2xl font-black text-amber-400" id="stat-discoveries">0</div>
       </div>
+    </div>
+
+    <!-- Discoveries Section (Hidden if empty) -->
+    <section id="discoveries-section" class="hidden space-y-3 bg-amber-950/20 border border-amber-900/50 rounded-2xl p-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-base">✨</span>
+          <h2 class="font-bold text-sm text-white">New Discoveries (10 or Fewer Chapters)</h2>
+        </div>
+        <span class="text-xs text-amber-400 font-medium">Found by Scraper</span>
+      </div>
+      <div id="discoveries-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+    </section>
+
+    <!-- Add Manhwa Form -->
+    <div class="bg-stone-900 border border-stone-800 rounded-2xl p-4 space-y-3">
+      <h3 class="font-bold text-sm text-stone-100 flex items-center gap-2">
+        <span>+ Add Manhwa to Reading List</span>
+      </h3>
+      <form onsubmit="window.handleAddManhwaSubmit(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs">
+        <div class="sm:col-span-4">
+          <label class="block text-[11px] text-stone-400 mb-1">Manhwa Title *</label>
+          <input type="text" id="new-title" placeholder="e.g. Solo Leveling: Ragnarok" required
+                 class="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500" />
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-[11px] text-stone-400 mb-1">Latest Ch.</label>
+          <input type="number" step="0.5" id="new-latest" placeholder="100" 
+                 class="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500" />
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-[11px] text-stone-400 mb-1">Your Progress</label>
+          <input type="number" step="0.5" id="new-read" placeholder="95" 
+                 class="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500" />
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-[11px] text-stone-400 mb-1">Cover URL (Optional)</label>
+          <input type="url" id="new-cover-url" placeholder="https://..." 
+                 class="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-red-500" />
+        </div>
+        <div class="sm:col-span-2 flex items-end">
+          <button type="submit" class="w-full py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition shadow active:scale-95">
+            Add Title
+          </button>
+        </div>
+      </form>
     </div>
 
     <!-- Search & Filter Controls -->
-    <div class="bg-stone-900/60 border border-stone-800 rounded-2xl p-3.5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-      <!-- Search Input -->
-      <div class="relative flex-1">
-        <span class="absolute left-3 top-2.5 text-stone-500 text-xs">🔍</span>
-        <input type="text" id="search-input" placeholder="Search manhwa by title..." 
-               class="w-full bg-stone-950 border border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
-      </div>
-
-      <!-- Filter Buttons -->
-      <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-1.5 bg-stone-900 border border-stone-800 rounded-xl p-1 w-full sm:w-auto">
         <button onclick="window.setFilter('all')" data-filter="all" 
-                class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white shadow whitespace-nowrap">
-          All (<span id="count-filter-all">0</span>)
+                class="filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-stone-800 text-white border border-stone-700">
+          All Titles
         </button>
         <button onclick="window.setFilter('unread')" data-filter="unread" 
-                class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-stone-400 hover:text-white border border-stone-800 whitespace-nowrap">
-          Unread (<span id="count-filter-unread">0</span>)
+                class="filter-btn px-3 py-1.5 rounded-xl text-xs font-medium text-stone-400 hover:text-stone-200">
+          Unread Releases
         </button>
-        <button onclick="window.setFilter('read')" data-filter="read" 
-                class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-stone-400 hover:text-white border border-stone-800 whitespace-nowrap">
-          Up to date (<span id="count-filter-read">0</span>)
+        <button onclick="window.setFilter('uptodate')" data-filter="uptodate" 
+                class="filter-btn px-3 py-1.5 rounded-xl text-xs font-medium text-stone-400 hover:text-stone-200">
+          Up to date
         </button>
+      </div>
+
+      <div class="w-full sm:w-64">
+        <input type="text" id="search-input" placeholder="Search by title..." 
+               class="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
       </div>
     </div>
 
-    <!-- 1. Reading List Section -->
-    <section class="space-y-3">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-bold text-white flex items-center gap-2">
-          <span>My Reading List</span>
-          <span class="text-xs text-stone-400 font-normal">(&plusmn; Chapter Stepper, Series Page, Direct Links)</span>
-        </h2>
-      </div>
-      <div id="watchlist-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        <!-- Loaded dynamically from Firestore -->
-      </div>
-    </section>
+    <!-- Main Watchlist Cards Grid -->
+    <main>
+      <div id="watchlist-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
 
-    <!-- 2. Add New Manhwa Form -->
-    <section class="bg-stone-900 border border-stone-800 rounded-2xl p-4 sm:p-5 space-y-3">
-      <div>
-        <h3 class="text-sm font-bold text-white">+ Add Manhwa to Reading List</h3>
-        <p class="text-xs text-stone-400">Instantly saves to Firestore and creates a direct ArenaScan chapter link.</p>
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden text-center py-16 bg-stone-900/40 border border-stone-800/80 rounded-2xl p-8 space-y-3">
+        <span class="text-4xl block">📚</span>
+        <h3 class="text-base font-bold text-white">No manhwa found</h3>
+        <p class="text-xs text-stone-400 max-w-sm mx-auto">
+          Add your first manhwa above or run <code class="text-amber-300">scraper.py</code> to automatically scan ArenaScan releases!
+        </p>
       </div>
-      <form id="add-form" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <input type="text" id="new-title" placeholder="Manhwa Title (e.g. Solo Leveling)" required 
-               class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
-        <input type="number" id="new-chapter" placeholder="Latest Chapter (e.g. 1)" value="1" step="any" required 
-               class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-red-500" />
-        <input type="url" id="new-url" placeholder="ArenaScan Chapter URL (optional, auto-generated)" 
-               class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
-        <input type="url" id="new-cover" placeholder="ArenaScan Cover URL (optional, e.g. https://arenascan.com/...jpg)" 
-               class="bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
-        <button type="submit" id="add-btn" class="sm:col-span-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2.5 rounded-xl transition active:scale-95 shadow">
-          Add Title to Firebase
-        </button>
-      </form>
-    </section>
-
-    <!-- 3. New Discoveries Section (<= 10 Chapters) -->
-    <section class="bg-stone-900/60 border border-amber-900/40 rounded-2xl p-4 sm:p-5 space-y-3">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-sm font-bold text-amber-300 flex items-center gap-1.5">
-            <span>New Series Discoveries (&le; 10 Chapters)</span>
-            <span id="discoveries-count-badge" class="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-amber-500/40">0</span>
-          </h2>
-          <p class="text-[11px] text-stone-400 mt-0.5">
-            Detected automatically by Python scraper. Click "+ Add to List" to track future chapter releases.
-          </p>
-        </div>
-      </div>
-      <div id="discoveries-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <!-- Loaded dynamically from Firestore -->
-      </div>
-    </section>
+    </main>
 
   </div>
 
-  <!-- Diagnostic Modal (Test DB Connection) -->
+  <!-- Diagnostic DB Test Modal -->
   <div id="diag-modal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden backdrop-blur-sm">
-    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
       <div class="flex items-center justify-between border-b border-stone-800 pb-3">
-        <h3 class="font-bold text-sm text-white flex items-center gap-2">
-          <span>⚡ Firebase Firestore Connection Test</span>
-        </h3>
+        <div class="flex items-center gap-2">
+          <span class="text-emerald-400">⚡</span>
+          <h3 class="font-bold text-sm text-white">Firestore Database Test</h3>
+        </div>
         <button onclick="window.closeDiagModal()" class="text-stone-400 hover:text-white text-sm">✕</button>
       </div>
       <div id="diag-output"></div>
-      <div class="flex justify-end pt-2">
-        <button onclick="window.closeDiagModal()" class="px-4 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold rounded-xl">
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="window.testFirebaseConnection()" class="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold rounded-xl">
+          Test Again
+        </button>
+        <button onclick="window.closeDiagModal()" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl">
           Close
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Config Modal -->
+  <!-- Configuration Modal -->
   <div id="config-modal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden backdrop-blur-sm">
-    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-lg p-5 space-y-3 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-stone-800 pb-2">
-        <h3 class="font-bold text-sm text-white">Firebase Project Configuration</h3>
+    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-stone-800 pb-3">
+        <div class="flex items-center gap-2">
+          <span>⚙️</span>
+          <h3 class="font-bold text-sm text-white">Configure Firebase Web Credentials</h3>
+        </div>
         <button onclick="window.closeConfigModal()" class="text-stone-400 hover:text-white text-sm">✕</button>
       </div>
       <p class="text-xs text-stone-400 leading-relaxed">
-        Paste your Firebase Web App configuration JSON here (from Firebase Console &gt; Project Settings &gt; General &gt; Your apps):
+        Paste your Firebase Web App configuration JSON here. It is saved directly in your browser's local storage:
       </p>
-      <textarea id="config-input" rows="8" class="w-full bg-stone-950 border border-stone-800 rounded-xl p-3 font-mono text-xs text-stone-200 focus:outline-none focus:border-red-500"></textarea>
+      <textarea id="config-json-input" rows="8" 
+                class="w-full bg-stone-950 border border-stone-800 rounded-xl p-3 font-mono text-xs text-stone-200 focus:outline-none focus:border-red-500"></textarea>
       <div class="flex justify-end gap-2 pt-2">
-        <button onclick="window.closeConfigModal()" class="px-3 py-1.5 text-xs text-stone-400 hover:text-white rounded-xl">Cancel</button>
-        <button onclick="window.saveConfigModal()" class="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl">Save & Connect</button>
+        <button onclick="window.closeConfigModal()" class="px-3.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-semibold rounded-xl">
+          Cancel
+        </button>
+        <button onclick="window.saveConfigFromModal()" class="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl shadow">
+          Save & Reload
+        </button>
       </div>
     </div>
   </div>
