@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manhwa Tracker Dashboard</title>
     
-    <!-- Link to your clean CSS file -->
+    <!-- Core Firebase SDKs loaded securely via global production scripts -->
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+    
+    <!-- Link to your clean CSS style layout layer file -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,13 +17,13 @@
     <div class="container">
         <div class="header">📚 Manhwa Personal Hub</div>
 
-        <!-- Fully Responsive Track Input Pane Wrapper Layout -->
+        <!-- Fully Responsive Track Input Pane Layout Wrapper -->
         <div class="track-pane">
             <input type="text" id="manhwaTitleField" placeholder="Enter Manhwa Title Exactly...">
             <button id="trackBtn">Track Title</button>
         </div>
 
-        <!-- Double Column Data Grid Template -->
+        <!-- Two Columns Data View Content Panels Grid Layout -->
         <div class="layout-grid">
             <div class="column-card">
                 <div class="column-heading">My Feed (Watchlist Items)</div>
@@ -32,138 +36,129 @@
         </div>
     </div>
 
-    <!-- Modern Modular Scripting block rules out race conditions entirely -->
-    <script type="module">
-        // FIXED URLS: Added the crucial 'www.' to bypass the CORS blockage completely
-        import { initializeApp } from "https://gstatic.com";
-        import { 
-            getFirestore, 
-            collection, 
-            addDoc, 
-            serverTimestamp, 
-            onSnapshot, 
-            query, 
-            orderBy 
-        } from "https://gstatic.com";
+    <script>
+        // Safety hook ensures code triggers only when browser parses document layout blocks
+        document.addEventListener('DOMContentLoaded', () => {
 
-        // =========================================================================
-        // 🛠️ CONFIGURATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
-        // =========================================================================
-        const firebaseConfig = {
-           apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-           authDomain: "manhwa-tracker-be510.firebaseapp.com",
-           projectId: "manhwa-tracker-be510",
-           storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-           messagingSenderId: "762652201419",
-           appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-           measurementId: "G-3YGH9RWWV8"
-        };
+            // =========================================================================
+            // 🛠️ CONFIGURATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
+            // =========================================================================
+           const firebaseConfig = {
+                 apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
+                 authDomain: "manhwa-tracker-be510.firebaseapp.com",
+                 projectId: "manhwa-tracker-be510",
+                 storageBucket: "manhwa-tracker-be510.firebasestorage.app",
+                 messagingSenderId: "762652201419",
+                 appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
+                 measurementId: "G-3YGH9RWWV8"
+            };
 
-        // Initialize Firebase services natively via modular imports
-        const app = initializeApp(firebaseConfig);
-        const firestoreDb = getFirestore(app);
+            // Initialize global configuration components securely
+            firebase.initializeApp(firebaseConfig);
+            const firestoreDb = firebase.firestore();
 
-        // Safe global tracking hash memory set 
-        let activeWatchlistSet = new Set();
+            // Safe global tracking hash memory set 
+            let activeWatchlistSet = new Set();
 
-        // === ACTION 1: SUBMIT AND WRITE INPUT VALUE STRINGS INTO THE WATCHLIST COLLECTION ===
-        async function saveWatchlistEntry() {
-            const inputField = document.getElementById('manhwaTitleField');
-            const titleValue = inputField.value.trim();
-            
-            if (titleValue) {
-                try {
-                    await addDoc(collection(firestoreDb, 'watchlist'), {
-                        title: titleValue,
-                        timestamp: serverTimestamp()
-                    });
-                    inputField.value = '';
-                    alert('Success! Title added to your tracking targets.');
-                } catch (error) {
-                    console.error("Error adding document to watchlist: ", error);
-                    alert('Firebase Write Error! Check console log tabs.');
+            // === ACTION 1: SUBMIT AND WRITE INPUT VALUE STRINGS INTO THE WATCHLIST COLLECTION ===
+            async function saveWatchlistEntry() {
+                const inputField = document.getElementById('manhwaTitleField');
+                const titleValue = inputField.value.trim();
+                
+                if (titleValue) {
+                    try {
+                        await firestoreDb.collection('watchlist').add({
+                            title: titleValue,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        inputField.value = '';
+                        alert('Success! Title added to your tracking targets.');
+                    } catch (error) {
+                        console.error("Error adding document to watchlist: ", error);
+                        alert('Firebase Write Error! Check console log tabs.');
+                    }
                 }
             }
-        }
 
-        // Securely bind the button click listener directly to the document nodes
-        document.getElementById('trackBtn').addEventListener('click', saveWatchlistEntry);
+            // Bind click event trigger elements listeners directly to document nodes
+            document.getElementById('trackBtn').addEventListener('click', saveWatchlistEntry);
 
-        // === ACTION 2: REAL-TIME CROSS-REFERENCE DATA ENGINE LINKED TO YOUR PYTHON LABELS ===
-        
-        // Step A: Real-time listener for the user watchlist data matrix collection
-        onSnapshot(collection(firestoreDb, 'watchlist'), (watchlistSnapshot) => {
-            activeWatchlistSet.clear();
-            watchlistSnapshot.forEach((doc) => {
-                const data = doc.data();
-                if (data.title) {
-                    activeWatchlistSet.add(data.title.toLowerCase().trim());
-                }
-            });
-            syncManhwaFeeds();
-        }, (error) => {
-            console.error("Watchlist network stream error: ", error);
-        });
-
-        // Step B: Real-time data routing handler for your Python script's collection row updates
-        function syncManhwaFeeds() {
-            const manhwaQuery = query(collection(firestoreDb, 'manhwa'), orderBy('discovered_at', 'desc'));
+            // === ACTION 2: REAL-TIME CROSS-REFERENCE DATA ENGINE LINKED TO YOUR PYTHON LABELS ===
             
-            onSnapshot(manhwaQuery, (querySnapshot) => {
-                const watchlistContainer = document.getElementById('watchlistFeedPanel');
-                const discoveryContainer = document.getElementById('discoveryFeedPanel');
-                
-                watchlistContainer.innerHTML = '';
-                discoveryContainer.innerHTML = '';
-
-                let watchlistCount = 0;
-                let discoveryCount = 0;
-
-                querySnapshot.forEach((doc) => {
-                    const manhwaData = doc.data();
-                    const rawTitle = manhwaData.title || '';
-                    const cleanTitle = rawTitle.toLowerCase().trim();
-                    const chapterNum = manhwaData.last_scanned_chapter || 0;
-
-                    const cardItem = document.createElement('div');
-                    cardItem.className = 'manhwa-row-card';
-                    cardItem.innerHTML = `
-                        <div class="card-meta">
-                            <span class="manga-name">${rawTitle}</span>
-                            <span class="manga-chapter-badge">Chapter ${chapterNum}</span>
-                        </div>
-                        <span class="ios-arrow">➔</span>
-                    `;
-
-                    cardItem.onclick = () => {
-                        const searchUrl = `https://arenascan.com{encodeURIComponent(rawTitle)}`;
-                        window.open(searchUrl, '_blank');
-                    };
-
-                    if (activeWatchlistSet.has(cleanTitle)) {
-                        watchlistContainer.appendChild(cardItem);
-                        watchlistCount++;
-                    } 
-                    
-                    if (chapterNum <= 10) {
-                        const discoveryCard = cardItem.cloneNode(true);
-                        discoveryCard.onclick = cardItem.onclick; 
-                        discoveryContainer.appendChild(discoveryCard);
-                        discoveryCount++;
+            // Step A: Real-time listener for the user watchlist data matrix collection
+            firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
+                activeWatchlistSet.clear();
+                watchlistSnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (data.title) {
+                        activeWatchlistSet.add(data.title.toLowerCase().trim());
                     }
                 });
-
-                if (watchlistCount === 0) {
-                    watchlistContainer.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding: 20px; font-size:14px;">No unread updates on tracked books.</div>';
-                }
-                if (discoveryCount === 0) {
-                    discoveryContainer.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding: 20px; font-size:14px;">No recently launched updates found.</div>';
-                }
+                syncManhwaFeeds();
             }, (error) => {
-                console.error("Manhwa core tracking nodes collection stream fault: ", error);
+                console.error("Watchlist network stream error: ", error);
             });
-        }
+
+            // Step B: Real-time data routing handler for your Python script's collection row updates
+            function syncManhwaFeeds() {
+                firestoreDb.collection('manhwa')
+                    .orderBy('discovered_at', 'desc')
+                    .onSnapshot((querySnapshot) => {
+                        const watchlistContainer = document.getElementById('watchlistFeedPanel');
+                        const discoveryContainer = document.getElementById('discoveryFeedPanel');
+                        
+                        watchlistContainer.innerHTML = '';
+                        discoveryContainer.innerHTML = '';
+
+                        let watchlistCount = 0;
+                        let discoveryCount = 0;
+
+                        querySnapshot.forEach((doc) => {
+                            const manhwaData = doc.data();
+                            const rawTitle = manhwaData.title || '';
+                            const cleanTitle = rawTitle.toLowerCase().trim();
+                            const chapterNum = manhwaData.last_scanned_chapter || 0;
+
+                            const cardItem = document.createElement('div');
+                            cardItem.className = 'manhwa-row-card';
+                            cardItem.innerHTML = `
+                                <div class="card-meta">
+                                    <span class="manga-name">${rawTitle}</span>
+                                    <span class="manga-chapter-badge">Chapter ${chapterNum}</span>
+                                </div>
+                                <span class="ios-arrow">➔</span>
+                            `;
+
+                            cardItem.onclick = () => {
+                                const searchUrl = `https://arenascan.com{encodeURIComponent(rawTitle)}`;
+                                window.open(searchUrl, '_blank');
+                            };
+
+                            if (activeWatchlistSet.has(cleanTitle)) {
+                                watchlistContainer.appendChild(cardItem);
+                                watchlistCount++;
+                            } 
+                            
+                            if (chapterNum <= 10) {
+                                const discoveryCard = cardItem.cloneNode(true);
+                                discoveryCard.onclick = cardItem.onclick; 
+                                discoveryContainer.appendChild(discoveryCard);
+                                discoveryCount++;
+                            }
+                        });
+
+                        if (watchlistCount === 0) {
+                            watchlistContainer.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding: 20px; font-size:14px;">No unread updates on tracked books.</div>';
+                        }
+                        if (discoveryCount === 0) {
+                            discoveryContainer.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding: 20px; font-size:14px;">No recently launched updates found.</div>';
+                        }
+                    }, (error) => {
+                        console.error("Manhwa core tracking nodes collection stream fault: ", error);
+                    });
+            }
+        });
     </script>
 </body>
 </html>
-<!-- Cache Refresh V4 -->
+<!-- Cache Refresh V5 -->
