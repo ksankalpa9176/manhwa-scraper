@@ -1,182 +1,249 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manhwa Tracker Dashboard</title>
-    
-    <!-- Link to your separate clean CSS file -->
-    <link rel="stylesheet" href="style.css">
-    
-    <!-- Safe Favicon Fallback to clear console error noise -->
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArenaScan Tracker</title>
+  <!-- Tailwind CSS CDN for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase Web SDK (Vanilla JavaScript) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+      getFirestore, 
+      collection, 
+      onSnapshot, 
+      doc, 
+      updateDoc, 
+      setDoc, 
+      deleteDoc,
+      serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // 1. YOUR FIREBASE CONFIG
+    // (Firebase Console -> Project Settings -> General -> Your apps -> Web app)
+    const firebaseConfig = {
+      apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
+      authDomain: "manhwa-tracker-be510.firebaseapp.com",
+      projectId: "manhwa-tracker-be510",
+      storageBucket: "manhwa-tracker-be510.firebasestorage.app",
+      messagingSenderId: "762652201419",
+      appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
+      measurementId: "G-3YGH9RWWV8""
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let watchlist = [];
+    let discoveries = [];
+
+    // Render Reading List
+    function renderWatchlist() {
+      const container = document.getElementById('watchlist-container');
+      if (watchlist.length === 0) {
+        container.innerHTML = '<div class="col-span-full text-center py-8 text-stone-500 text-sm">Your reading list is empty. Add a manhwa below!</div>';
+        return;
+      }
+      container.innerHTML = watchlist.map(item => {
+        const isUnread = item.latest_chapter > (item.last_read_chapter || 0);
+        return `
+          <div class="bg-stone-900 border ${isUnread ? 'border-red-600 ring-1 ring-red-600/50' : 'border-stone-800'} rounded-xl p-3.5 flex gap-3 shadow">
+            <img src="${item.cover_url || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400'}" 
+                 class="w-20 h-28 object-cover rounded-lg bg-stone-950 flex-shrink-0" alt="${item.title}" />
+            <div class="flex-1 flex flex-col justify-between min-w-0">
+              <div>
+                <div class="flex items-start justify-between gap-1">
+                  <h3 class="font-bold text-sm text-stone-100 truncate">${item.title}</h3>
+                  ${isUnread ? '<span class="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">NEW</span>' : ''}
+                </div>
+                <div class="text-xs font-semibold text-red-400 mt-1">
+                  ${item.latest_chapter_text || 'Chapter ' + item.latest_chapter}
+                </div>
+                <div class="text-[11px] text-stone-400 mt-0.5">
+                  You read: <span class="text-stone-300 font-medium">Ch. ${item.last_read_chapter || 0}</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 mt-2">
+                <button onclick="window.readAndGo('${item.id}', '${item.latest_chapter_url || '#'}', ${item.latest_chapter})" 
+                        class="flex-1 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-1.5 px-3 rounded-lg transition active:scale-95 text-center">
+                  Read & Mark Read
+                </button>
+                <button onclick="window.deleteItem('${item.id}')" class="text-stone-500 hover:text-red-400 p-1.5 text-xs">
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render Discoveries (<= 10 Chapters)
+    function renderDiscoveries() {
+      const container = document.getElementById('discoveries-container');
+      document.getElementById('discoveries-count').textContent = discoveries.length;
+      if (discoveries.length === 0) {
+        container.innerHTML = '<div class="col-span-full text-center py-6 text-stone-500 text-xs">No pending discoveries. Scraper will add series with &le; 10 chapters here!</div>';
+        return;
+      }
+      container.innerHTML = discoveries.map(item => `
+        <div class="bg-stone-900 border border-amber-900/50 rounded-xl p-3 flex gap-3">
+          <img src="${item.cover_url || 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=400'}" 
+               class="w-16 h-24 object-cover rounded-lg bg-stone-950 flex-shrink-0" alt="${item.title}" />
+          <div class="flex-1 flex flex-col justify-between min-w-0">
+            <div>
+              <h4 class="font-bold text-xs text-stone-100 truncate">${item.title}</h4>
+              <div class="text-xs font-medium text-amber-400 mt-0.5">
+                ${item.latest_chapter_text || 'Chapter ' + item.latest_chapter} (&le; 10 Ch.)
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 mt-2">
+              <a href="${item.latest_chapter_url || '#'}" target="_blank" class="text-[11px] text-stone-400 hover:text-white px-2 py-1 rounded bg-stone-800">
+                Preview
+              </a>
+              <button onclick="window.addDiscoveryToWatchlist('${item.id}')" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-1 px-2 rounded transition">
+                + Add to List
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Real-Time Listeners
+    onSnapshot(collection(db, "watchlist"), (snapshot) => {
+      watchlist = [];
+      snapshot.forEach(d => watchlist.push({ id: d.id, ...d.data() }));
+      renderWatchlist();
+    });
+
+    onSnapshot(collection(db, "discoveries"), (snapshot) => {
+      discoveries = [];
+      snapshot.forEach(d => discoveries.push({ id: d.id, ...d.data() }));
+      renderDiscoveries();
+    });
+
+    // Touch / Click: Mark as read in Firebase & open chapter link
+    window.readAndGo = async function(id, url, chapterNum) {
+      try {
+        await updateDoc(doc(db, "watchlist", id), {
+          last_read_chapter: Number(chapterNum),
+          has_unread: false
+        });
+      } catch (err) {
+        console.error("Update error:", err);
+      }
+      if (url && url !== '#') {
+        window.open(url, '_blank');
+      }
+    };
+
+    // Move discovery to reading list
+    window.addDiscoveryToWatchlist = async function(id) {
+      const disc = discoveries.find(d => d.id === id);
+      if (!disc) return;
+      await setDoc(doc(db, "watchlist", id), {
+        title: disc.title,
+        latest_chapter: disc.latest_chapter,
+        latest_chapter_text: disc.latest_chapter_text,
+        latest_chapter_url: disc.latest_chapter_url,
+        cover_url: disc.cover_url || '',
+        last_read_chapter: 0,
+        has_unread: true,
+        created_at: serverTimestamp()
+      });
+      await deleteDoc(doc(db, "discoveries", id));
+    };
+
+    // Remove from reading list
+    window.deleteItem = async function(id) {
+      if (confirm("Remove title from your reading list?")) {
+        await deleteDoc(doc(db, "watchlist", id));
+      }
+    };
+
+    // Form: Add manhwa manually
+    document.getElementById('add-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('new-title').value.trim();
+      const ch = parseFloat(document.getElementById('new-chapter').value) || 1;
+      const url = document.getElementById('new-url').value.trim();
+      if (!title) return;
+
+      const docId = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      await setDoc(doc(db, "watchlist", docId), {
+        title: title,
+        latest_chapter: ch,
+        latest_chapter_text: "Chapter " + ch,
+        latest_chapter_url: url || ("https://arenascan.com/" + docId + "-chapter-" + ch + "/"),
+        cover_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400",
+        last_read_chapter: ch,
+        has_unread: false,
+        created_at: serverTimestamp()
+      });
+
+      document.getElementById('new-title').value = '';
+      document.getElementById('new-chapter').value = '1';
+      document.getElementById('new-url').value = '';
+    });
+  </script>
 </head>
-<body>
+<body class="bg-stone-950 text-stone-200 font-sans min-h-screen p-4 sm:p-6">
+  <div class="max-w-4xl mx-auto space-y-6">
 
-    <div class="container">
-        <div class="header">📚 Manhwa Personal Hub</div>
+    <!-- Header -->
+    <header class="flex items-center justify-between border-b border-stone-800 pb-4">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>ArenaScan Tracker</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+            GitHub Pages
+          </span>
+        </h1>
+        <p class="text-xs text-stone-400 mt-0.5">Real-time sync with your Firebase Firestore</p>
+      </div>
+    </header>
 
-        <!-- Track Input Bar Pane -->
-        <div class="track-pane">
-            <input type="text" id="manhwaTitleField" placeholder="Enter Manhwa Title Exactly...">
-            <button id="trackBtn">Track Title</button>
-        </div>
+    <!-- Reading List -->
+    <section>
+      <h2 class="text-base font-bold text-white mb-1">My Reading List</h2>
+      <p class="text-xs text-stone-400 mb-3">Clicking "Read & Mark Read" automatically opens the chapter on ArenaScan and marks it read.</p>
+      <div id="watchlist-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <!-- populated by Firebase -->
+      </div>
+    </section>
 
-        <!-- Double Column Data Feed Grid -->
-        <div class="layout-grid">
-            <div class="column-card">
-                <div class="column-heading">My Feed (Watchlist Items)</div>
-                <div id="watchlistFeedPanel">Connecting to network channels...</div>
-            </div>
-            <div class="column-card">
-                <div class="column-heading">Newly Discovered Series</div>
-                <div id="discoveryFeedPanel">Connecting to network channels...</div>
-            </div>
-        </div>
-    </div>
+    <!-- Add Title Form -->
+    <section class="bg-stone-900 border border-stone-800 rounded-xl p-4">
+      <h3 class="text-sm font-bold text-white mb-2">+ Add Manhwa to Reading List</h3>
+      <form id="add-form" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <input type="text" id="new-title" placeholder="Manhwa Title" required 
+               class="bg-stone-950 border border-stone-800 rounded-lg px-3 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
+        <input type="number" id="new-chapter" placeholder="Latest Chapter" value="1" step="any" required 
+               class="bg-stone-950 border border-stone-800 rounded-lg px-3 py-1.5 text-xs text-stone-100 focus:outline-none focus:border-red-500" />
+        <input type="url" id="new-url" placeholder="ArenaScan Chapter URL (optional)" 
+               class="bg-stone-950 border border-stone-800 rounded-lg px-3 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-red-500" />
+        <button type="submit" class="sm:col-span-3 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-2 rounded-lg transition active:scale-95">
+          Add Title to Firebase
+        </button>
+      </form>
+    </section>
 
-    <!-- Fallproof Loader Core Scripts Script -->
-    <script>
-        (function() {
-            var gApp = document.createElement('script');
-            gApp.src = "https://gstatic.com";
-            gApp.crossOrigin = "anonymous";
-            
-            gApp.onload = function() {
-                var gStore = document.createElement('script');
-                gStore.src = "https://gstatic.com";
-                gStore.crossOrigin = "anonymous";
-                gStore.onload = startTrackerEngine;
-                document.head.appendChild(gStore);
-            };
-            
-            gApp.onerror = function() {
-                console.log("⚠️ Gstatic route blocked. Activating alternative fallback engine pipelines...");
-                var cApp = document.createElement('script');
-                cApp.src = "https://jsdelivr.net";
-                cApp.onload = function() {
-                    var cStore = document.createElement('script');
-                    cStore.src = "https://jsdelivr.net";
-                    cStore.onload = startTrackerEngine;
-                    document.head.appendChild(cStore);
-                };
-                document.head.appendChild(cApp);
-            };
-            
-            document.head.appendChild(gApp);
-        })();
+    <!-- New Discoveries (<= 10 Chapters) -->
+    <section class="bg-stone-900/60 border border-amber-900/40 rounded-xl p-4">
+      <h2 class="text-sm font-bold text-amber-300 flex items-center gap-1.5 mb-1">
+        <span>New Series Discoveries (&le; 10 Chapters)</span>
+        <span id="discoveries-count" class="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-amber-500/40">0</span>
+      </h2>
+      <p class="text-[11px] text-stone-400 mb-3">
+        Detected by Python scraper. Click "+ Add to List" to start tracking releases.
+      </p>
+      <div id="discoveries-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- populated by Firebase -->
+      </div>
+    </section>
 
-        function startTrackerEngine() {
-            console.log("✅ Core database libraries loaded successfully!");
-            
-            // Your exact configuration parameters applied natively
-            const firebaseConfig = {
-                apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-                authDomain: "://firebaseapp.com",
-                projectId: "manhwa-tracker-be510",
-                storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-                messagingSenderId: "762652201419",
-                appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-                measurementId: "G-3YGH9RWWV8"
-            };
-
-            firebase.initializeApp(firebaseConfig);
-            const firestoreDb = firebase.firestore();
-            let activeWatchlistSet = new Set();
-
-            async function saveWatchlistEntry() {
-                const inputField = document.getElementById('manhwaTitleField');
-                const titleValue = inputField.value.trim();
-                
-                if (titleValue) {
-                    try {
-                        await firestoreDb.collection('watchlist').add({
-                            title: titleValue,
-                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                        inputField.value = '';
-                        alert('Success! Title added to your tracking targets.');
-                    } catch (error) {
-                        console.error("Error adding document to watchlist: ", error);
-                        alert('Firebase Write Error! Make sure your Firestore Rules are set to open.');
-                    }
-                }
-            }
-
-            document.getElementById('trackBtn').addEventListener('click', saveWatchlistEntry);
-
-            firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
-                activeWatchlistSet.clear();
-                watchlistSnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    if (data.title) {
-                        activeWatchlistSet.add(data.title.toLowerCase().trim());
-                    }
-                });
-                syncManhwaFeeds();
-            }, (error) => {
-                console.error("Watchlist network stream error: ", error);
-            });
-
-            function syncManhwaFeeds() {
-                firestoreDb.collection('manhwa')
-                    .orderBy('discovered_at', 'desc')
-                    .onSnapshot((querySnapshot) => {
-                        const watchlistContainer = document.getElementById('watchlistFeedPanel');
-                        const discoveryContainer = document.getElementById('discoveryFeedPanel');
-                        
-                        watchlistContainer.innerHTML = '';
-                        discoveryContainer.innerHTML = '';
-
-                        let watchlistCount = 0;
-                        let discoveryCount = 0;
-
-                        querySnapshot.forEach((doc) => {
-                            const manhwaData = doc.data();
-                            const rawTitle = manhwaData.title || '';
-                            const cleanTitle = rawTitle.toLowerCase().trim();
-                            const chapterNum = manhwaData.last_scanned_chapter || 0;
-
-                            const cardItem = document.createElement('div');
-                            cardItem.className = 'manhwa-row-card';
-                            cardItem.innerHTML = `
-                                <div class="card-meta">
-                                    <span class="manga-name">${rawTitle}</span>
-                                    <span class="manga-chapter-badge">Chapter ${chapterNum}</span>
-                                </div>
-                                <span class="ios-arrow">➔</span>
-                            `;
-
-                            cardItem.onclick = () => {
-                                const searchUrl = `https://arenascan.com{encodeURIComponent(rawTitle)}`;
-                                window.open(searchUrl, '_blank');
-                            };
-
-                            if (activeWatchlistSet.has(cleanTitle)) {
-                                watchlistContainer.appendChild(cardItem);
-                                watchlistCount++;
-                            } 
-                            
-                            if (chapterNum <= 10) {
-                                const discoveryCard = cardItem.cloneNode(true);
-                                discoveryCard.onclick = cardItem.onclick; 
-                                discoveryContainer.appendChild(discoveryCard);
-                                discoveryCount++;
-                            }
-                        });
-
-                        if (watchlistCount === 0) {
-                            watchlistContainer.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding: 20px; font-size:14px;">No unread updates on tracked books.</div>';
-                        }
-                        if (discoveryCount === 0) {
-                            discoveryContainer.innerHTML = '<div style="color:rgba(255,255,255,0.2); text-align:center; padding: 20px; font-size:14px;">No recently launched updates found.</div>';
-                        }
-                    }, (error) => {
-                        console.error("Manhwa core tracking nodes collection stream fault: ", error);
-                    });
-            }
-        }
-    </script>
+  </div>
 </body>
 </html>
-<!-- Cache Override Flush V9 -->
