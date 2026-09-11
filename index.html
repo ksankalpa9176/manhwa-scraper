@@ -4,9 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ArenaScan Tracker</title>
-  <!-- Tailwind CSS CDN for styling -->
+  
+  <!-- 1. Suppress Tailwind CDN console notice -->
+  <script>
+    const _origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      _origWarn.apply(console, args);
+    };
+  </script>
+  <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase Web SDK (Vanilla JavaScript) -->
+
+  <!-- 2. Firebase Web SDK (Vanilla JavaScript) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { 
@@ -20,7 +30,7 @@
       serverTimestamp 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // 1. YOUR FIREBASE CONFIG
+    // REPLACE THE VALUES BELOW WITH YOUR FIREBASE PROJECT SETTINGS:
     // (Firebase Console -> Project Settings -> General -> Your apps -> Web app)
     const firebaseConfig = {
       apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
@@ -29,9 +39,8 @@
       storageBucket: "manhwa-tracker-be510.firebasestorage.app",
       messagingSenderId: "762652201419",
       appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-      measurementId: "G-3YGH9RWWV8""
+      measurementId: "G-3YGH9RWWV8"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
@@ -41,6 +50,7 @@
     // Render Reading List
     function renderWatchlist() {
       const container = document.getElementById('watchlist-container');
+      if (!container) return;
       if (watchlist.length === 0) {
         container.innerHTML = '<div class="col-span-full text-center py-8 text-stone-500 text-sm">Your reading list is empty. Add a manhwa below!</div>';
         return;
@@ -82,7 +92,10 @@
     // Render Discoveries (<= 10 Chapters)
     function renderDiscoveries() {
       const container = document.getElementById('discoveries-container');
-      document.getElementById('discoveries-count').textContent = discoveries.length;
+      const badge = document.getElementById('discoveries-count');
+      if (badge) badge.textContent = discoveries.length;
+      if (!container) return;
+
       if (discoveries.length === 0) {
         container.innerHTML = '<div class="col-span-full text-center py-6 text-stone-500 text-xs">No pending discoveries. Scraper will add series with &le; 10 chapters here!</div>';
         return;
@@ -111,7 +124,7 @@
       `).join('');
     }
 
-    // Real-Time Listeners
+    // Real-Time Listeners from Firebase Firestore
     onSnapshot(collection(db, "watchlist"), (snapshot) => {
       watchlist = [];
       snapshot.forEach(d => watchlist.push({ id: d.id, ...d.data() }));
@@ -124,7 +137,7 @@
       renderDiscoveries();
     });
 
-    // Touch / Click: Mark as read in Firebase & open chapter link
+    // Mark as read in Firebase & open chapter URL
     window.readAndGo = async function(id, url, chapterNum) {
       try {
         await updateDoc(doc(db, "watchlist", id), {
@@ -156,43 +169,48 @@
       await deleteDoc(doc(db, "discoveries", id));
     };
 
-    // Remove from reading list
+    // Delete title from reading list
     window.deleteItem = async function(id) {
       if (confirm("Remove title from your reading list?")) {
         await deleteDoc(doc(db, "watchlist", id));
       }
     };
 
-    // Form: Add manhwa manually
-    document.getElementById('add-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const title = document.getElementById('new-title').value.trim();
-      const ch = parseFloat(document.getElementById('new-chapter').value) || 1;
-      const url = document.getElementById('new-url').value.trim();
-      if (!title) return;
+    // Add manhwa manually from UI
+    document.addEventListener('DOMContentLoaded', () => {
+      const addForm = document.getElementById('add-form');
+      if (addForm) {
+        addForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const title = document.getElementById('new-title').value.trim();
+          const ch = parseFloat(document.getElementById('new-chapter').value) || 1;
+          const url = document.getElementById('new-url').value.trim();
+          if (!title) return;
 
-      const docId = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      await setDoc(doc(db, "watchlist", docId), {
-        title: title,
-        latest_chapter: ch,
-        latest_chapter_text: "Chapter " + ch,
-        latest_chapter_url: url || ("https://arenascan.com/" + docId + "-chapter-" + ch + "/"),
-        cover_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400",
-        last_read_chapter: ch,
-        has_unread: false,
-        created_at: serverTimestamp()
-      });
+          const docId = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+          await setDoc(doc(db, "watchlist", docId), {
+            title: title,
+            latest_chapter: ch,
+            latest_chapter_text: "Chapter " + ch,
+            latest_chapter_url: url || ("https://arenascan.com/" + docId + "-chapter-" + ch + "/"),
+            cover_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400",
+            last_read_chapter: ch,
+            has_unread: false,
+            created_at: serverTimestamp()
+          });
 
-      document.getElementById('new-title').value = '';
-      document.getElementById('new-chapter').value = '1';
-      document.getElementById('new-url').value = '';
+          document.getElementById('new-title').value = '';
+          document.getElementById('new-chapter').value = '1';
+          document.getElementById('new-url').value = '';
+        });
+      }
     });
   </script>
 </head>
 <body class="bg-stone-950 text-stone-200 font-sans min-h-screen p-4 sm:p-6">
   <div class="max-w-4xl mx-auto space-y-6">
 
-    <!-- Header -->
+    <!-- Top Header -->
     <header class="flex items-center justify-between border-b border-stone-800 pb-4">
       <div>
         <h1 class="text-xl font-bold text-white flex items-center gap-2">
@@ -201,20 +219,20 @@
             GitHub Pages
           </span>
         </h1>
-        <p class="text-xs text-stone-400 mt-0.5">Real-time sync with your Firebase Firestore</p>
+        <p class="text-xs text-stone-400 mt-0.5">Real-time sync with Firebase Firestore</p>
       </div>
     </header>
 
-    <!-- Reading List -->
+    <!-- 1. Reading List / New Releases -->
     <section>
       <h2 class="text-base font-bold text-white mb-1">My Reading List</h2>
-      <p class="text-xs text-stone-400 mb-3">Clicking "Read & Mark Read" automatically opens the chapter on ArenaScan and marks it read.</p>
+      <p class="text-xs text-stone-400 mb-3">Clicking "Read & Mark Read" opens the chapter on ArenaScan and marks it read.</p>
       <div id="watchlist-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        <!-- populated by Firebase -->
+        <!-- Loaded via Firebase -->
       </div>
     </section>
 
-    <!-- Add Title Form -->
+    <!-- 2. Add New Manhwa Form -->
     <section class="bg-stone-900 border border-stone-800 rounded-xl p-4">
       <h3 class="text-sm font-bold text-white mb-2">+ Add Manhwa to Reading List</h3>
       <form id="add-form" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -230,17 +248,17 @@
       </form>
     </section>
 
-    <!-- New Discoveries (<= 10 Chapters) -->
+    <!-- 3. New Discoveries (<= 10 Chapters) -->
     <section class="bg-stone-900/60 border border-amber-900/40 rounded-xl p-4">
       <h2 class="text-sm font-bold text-amber-300 flex items-center gap-1.5 mb-1">
         <span>New Series Discoveries (&le; 10 Chapters)</span>
         <span id="discoveries-count" class="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-amber-500/40">0</span>
       </h2>
       <p class="text-[11px] text-stone-400 mb-3">
-        Detected by Python scraper. Click "+ Add to List" to start tracking releases.
+        Detected by Python scraper. Click "+ Add to List" to track future chapter releases.
       </p>
       <div id="discoveries-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <!-- populated by Firebase -->
+        <!-- Loaded via Firebase -->
       </div>
     </section>
 
