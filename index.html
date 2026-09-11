@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manhwa Tracker Dashboard</title>
     
-    <!-- Core Firebase SDK links loaded directly from the cloud CDN -->
-    <script src="https://gstatic.com"></script>
-    <script src="https://gstatic.com"></script>
+    <!-- Added "defer" to force the browser to load these files first, completely in order -->
+    <script defer src="https://gstatic.com"></script>
+    <script defer src="https://gstatic.com"></script>
     
     <!-- Link to your clean CSS file -->
     <link rel="stylesheet" href="style.css">
@@ -37,23 +37,32 @@
     </div>
 
     <script>
-        // Forces the browser to wait until Firebase script tags are fully downloaded and ready
-        document.addEventListener('DOMContentLoaded', () => {
-            
+        // Bulletproof checking loop: Waits until the internet completely loads the "firebase" variable
+        function initializeAppWhenReady() {
+            if (typeof firebase !== 'undefined') {
+                console.log("✅ Firebase libraries detected successfully! Starting application engine...");
+                startTrackerEngine();
+            } else {
+                console.log("⏳ Waiting for Firebase libraries to finish downloading...");
+                setTimeout(initializeAppWhenReady, 100); // Check again in 100 milliseconds
+            }
+        }
+
+        function startTrackerEngine() {
             // =========================================================================
             // 🛠️ CONFIGURATION: PASTE YOUR CONSOLE APP WEB KEYS CONFIG BLOCK HERE!
             // =========================================================================
-           const firebaseConfig = {
-             apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-             authDomain: "manhwa-tracker-be510.firebaseapp.com",
-             projectId: "manhwa-tracker-be510",
-             storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-             messagingSenderId: "762652201419",
-             appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-            measurementId: "G-3YGH9RWWV8"
-            };
+            const firebaseConfig = {
+              apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
+              authDomain: "manhwa-tracker-be510.firebaseapp.com",
+              projectId: "manhwa-tracker-be510",
+              storageBucket: "manhwa-tracker-be510.firebasestorage.app",
+              messagingSenderId: "762652201419",
+              appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
+              measurementId: "G-3YGH9RWWV8"
+              };
 
-            // Initialize Firebase services after checking they are downloaded safely
+            // Initialize Firebase services safely
             firebase.initializeApp(firebaseConfig);
             const firestoreDb = firebase.firestore();
 
@@ -157,7 +166,10 @@
                         console.error("Manhwa core tracking nodes collection stream fault: ", error);
                     });
             }
-        });
+        }
+
+        // Run the safety initialization check immediately when the webpage opens
+        initializeAppWhenReady();
     </script>
 </body>
 </html>
