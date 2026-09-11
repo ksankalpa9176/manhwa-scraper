@@ -7,108 +7,130 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # 1. CONNECT TO YOUR FIREBASE DATABASE
+KEY_FILE = "firebase-key.json"
+
+if not os.path.exists(KEY_FILE):
+    print(f"⚠️ Warning: '{KEY_FILE}' not found! Place your service account key here.")
+
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase-key.json")
+    cred = credentials.Certificate(KEY_FILE)
     firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 
+def normalize_title(title):
+    return re.sub(r'[^a-zA-Z0-9]+', ' ', title).strip().lower()
+
+
+def make_doc_id(title):
+    cleaned = re.sub(r'[^a-zA-Z0-9]+', '_', title.lower()).strip('_')
+    return cleaned or "unknown_title"
+
+
 def extract_chapter_number(text):
-    """Turns chapter text like 'Chapter 9' or 'Ch. 4.5' into a floating number."""
-    numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text)
-    if numbers:
-        return float(numbers[0])
+    matches = re.findall(r"[-+]?\d*\.?\d+", text)
+    if matches:
+        return float(matches[0])
     return 999.0
 
 
 def run_scraper():
-    print("🚀 Connecting to Arenascan Feed...")
+    print("🚀 Connecting to ArenaScan Feed...")
 
-    # 2. LOAD YOUR WATCHLIST FROM FIREBASE
-    watchlist_docs = db.collection('watchlist').stream()
-    my_watchlist = {doc.to_dict().get('title', '').lower().strip() for doc in watchlist_docs}
-    print(f"Tracking {len(my_watchlist)} titles from your watchlist.")
+    # Load your reading list
+    watchlist_ref = db.collection('watchlist')
+    my_watchlist = {
+        normalize_title(doc.to_dict().get('title', '')): (doc.id, doc.to_dict())
+        for doc in watchlist_ref.stream()
+    }
+    print(f"📋 Tracking {len(my_watchlist)} titles in your reading list.")
 
-    # 3. AUTOMATED PAGINATION LOOP (Pages 1 to 5)
+    # Load existing discoveries so we notify only once
+    discoveries_ref = db.collection('discoveries')
+    existing_discoveries = {doc.id for doc in discoveries_ref.stream()}
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    }
+
+    base_url = "https://arenascan.com"
+
+    # Scan Pages 1 to 5
     for page in range(1, 6):
-        print(f"Scanning Arenascan Page {page}...")
-
-        # 🛠️ ERROR-PROOF FIX: Hardcode paths separately so Python never creates 'arenascan.compage'
-        if page == 1:
-            url = "https://arenascan.com/"
-        else:
-            url = f"https://arenascan.com/page/{page}/"
+        page_url = f"{base_url}/page/{page}/" if page > 1 else f"{base_url}/"
+        print(f"🔍 Scanning ArenaScan Page {page}...")
 
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            # setting verify=True forces full strict SSL parsing, solving structural host drops
-            response = requests.get(url, headers=headers, timeout=15)
+            res = requests.get(page_url, headers=headers, timeout=15)
+            if res.status_code != 200:
+                continue
+        except Exception as e:
+            print(f"Error fetching page {page}: {e}")
+            continue
 
-            if response.status_code != 200:
-                print(f"⚠️ Page {page} inaccessible (Status Code: {response.status_code})")
+        soup = BeautifulSoup(res.text, 'html.parser')
+        items = soup.select('.page-item-detail, .bsx, .utao, .slide-item, .listupd .bs, article')
+
+        for item in items:
+            title_el = item.select_one('.post-title a, .tt, h4 a, h3 a, .title a')
+            if not title_el:
                 continue
 
-            soup = BeautifulSoup(response.text, 'html.parser')
+            raw_title = title_el.get_text(strip=True)
+            norm_title = normalize_title(raw_title)
+            doc_id = make_doc_id(raw_title)
 
-            # Arenascan structural layout containers
-            manga_items = soup.find_all('div', class_='utao') or soup.find_all('div', class_='bsx')
+            chapter_el = item.select_one('.chapter-item a, .epxs, .chapter, .ch-item a')
+            chapter_text = chapter_el.get_text(strip=True) if chapter_el else "Chapter 1"
+            chapter_url = chapter_el.get('href', '') if chapter_el else title_el.get('href', '')
+            if chapter_url.startswith('/'):
+                chapter_url = base_url + chapter_url
 
-            for item in manga_items:
-                title_element = item.find('h4') or item.find('div', class_='tt')
+            chapter_num = extract_chapter_number(chapter_text)
 
-                # Extract the direct link to the item
-                link_element = item.find('a')
-                manhwa_url = link_element['href'] if link_element and link_element.has_attr('href') else url
+            img_el = item.select_one('img')
+            cover_url = ""
+            if img_el:
+                cover_url = img_el.get('data-src') or img_el.get('data-lazy-src') or img_el.get('src') or ""
 
-                chapter_element = item.find('ul').find('li') if item.find('ul') else None
-                if not title_element:
-                    continue
+            # 1. Title is in your reading list
+            if norm_title in my_watchlist:
+                w_doc_id, w_data = my_watchlist[norm_title]
+                last_known = float(w_data.get('latest_chapter', 0))
 
-                title = title_element.text.strip()
-                title_lower = title.lower()
-
-                chapter_text = chapter_element.text.strip() if chapter_element else "Chapter 0"
-                current_chapter = extract_chapter_number(chapter_text)
-
-                # Safe document ID for Firestore
-                doc_id = re.sub(r'[^a-z0-9]', '_', title_lower)
-
-                # Check if this manhwa already exists in database
-                manhwa_ref = db.collection('manhwa').document(doc_id)
-                manhwa_doc = manhwa_ref.get()
-
-                if not manhwa_doc.exists:
-                    # 🚨 NEW MANHWA DISCOVERED
-                    print(f"\n✨ NEW MANHWA DISCOVERED: {title} ({chapter_text})")
-                    print(f"🔗 Read Here: {manhwa_url}")
-                    print("👉 Showing this once. Add it to your app's watchlist if you want to keep tracking it!\n")
-
-                    manhwa_ref.set({
-                        'title': title,
-                        'last_scanned_chapter': current_chapter,
-                        'discovered_at': firestore.SERVER_TIMESTAMP
+                if chapter_num > last_known:
+                    print(f"🔔 [NEW CHAPTER] {raw_title}: {chapter_text}")
+                    watchlist_ref.document(w_doc_id).update({
+                        'title': raw_title,
+                        'latest_chapter': chapter_num,
+                        'latest_chapter_text': chapter_text,
+                        'latest_chapter_url': chapter_url,
+                        'cover_url': cover_url or w_data.get('cover_url', ''),
+                        'has_unread': True,
+                        'updated_at': firestore.SERVER_TIMESTAMP
                     })
+                    w_data['latest_chapter'] = chapter_num
 
-                else:
-                    # 🔄 MANHWA ALREADY KNOWN
-                    if title_lower in my_watchlist:
-                        data = manhwa_doc.to_dict()
-                        last_chapter = data.get('last_scanned_chapter', 0.0)
+            # 2. New discovery with <= 10 chapters
+            elif chapter_num <= 10.0:
+                if doc_id not in existing_discoveries:
+                    print(f"✨ [NEW DISCOVERY (<= 10 Ch.)] {raw_title} - {chapter_text}")
+                    discoveries_ref.document(doc_id).set({
+                        'title': raw_title,
+                        'latest_chapter': chapter_num,
+                        'latest_chapter_text': chapter_text,
+                        'latest_chapter_url': chapter_url,
+                        'cover_url': cover_url,
+                        'notified': True,
+                        'created_at': firestore.SERVER_TIMESTAMP
+                    })
+                    existing_discoveries.add(doc_id)
 
-                        if current_chapter > last_chapter:
-                            print(f"\n🔥 UPDATE for Watchlist Item [{title}]: {chapter_text} is out!")
-                            print(f"🔗 Read Update Here: {manhwa_url}\n")
-                            manhwa_ref.update({'last_scanned_chapter': current_chapter})
-                    else:
-                        continue
+        time.sleep(1.0)
 
-        except Exception as e:
-            print(f"❌ Error scanning page {page}: {e}")
-
-        time.sleep(2)
+    print("✅ Finished! Your Firebase database and GitHub Pages are up to date.")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_scraper()
