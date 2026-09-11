@@ -11,19 +11,19 @@ const firebaseConfig = {
   measurementId: "G-3YGH9RWWV8"
 };
 
-// Initialize Firebase App instance
+// Initialize Firebase App instance securely
 firebase.initializeApp(firebaseConfig);
 const firestoreDb = firebase.firestore();
 
-// Global tracking variables to store user tracking queries
+// Global tracking variable to store user tracking queries securely
 let activeWatchlistSet = new Set();
 
 // === ACTION 1: ADD INPUT TITLES TO FIREBASE WATCHLIST ===
 async function saveWatchlistEntry() {
     const inputField = document.getElementById('manhwaTitleField');
-    const titleValue = inputField.value.trim();
+    const titleValue = inputField.value ? inputField.value.trim() : '';
     
-    if (titleValue) {
+    if (titleValue !== '') {
         try {
             await firestoreDb.collection('watchlist').add({
                 title: titleValue,
@@ -33,7 +33,7 @@ async function saveWatchlistEntry() {
             alert('Success! Title added to your tracking targets.');
         } catch (error) {
             console.error("Error adding document to watchlist: ", error);
-            alert('Firebase Write Error! Check console log tabs.');
+            alert('Firebase Write Error: ' + error.message);
         }
     }
 }
@@ -45,9 +45,10 @@ firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
     activeWatchlistSet.clear();
     watchlistSnapshot.forEach((doc) => {
         const data = doc.data();
-        if (data.title) {
-            // Clean up the text parsing to prevent runtime background interface lockups
-            activeWatchlistSet.add(data.title.toLowerCase().trim());
+        if (data && data.title) {
+            // FIXED: Using pure standard JavaScript string trimming methods to prevent silent crashes
+            const cleanWatchlistTitle = String(data.title).toLowerCase().trim();
+            activeWatchlistSet.add(cleanWatchlistTitle);
         }
     });
     // Triggers full layout sync whenever target items change
@@ -64,6 +65,8 @@ function syncManhwaFeeds() {
             const watchlistContainer = document.getElementById('watchlistFeedPanel');
             const discoveryContainer = document.getElementById('discoveryFeedPanel');
             
+            if (!watchlistContainer || !discoveryContainer) return;
+            
             watchlistContainer.innerHTML = '';
             discoveryContainer.innerHTML = '';
 
@@ -72,6 +75,8 @@ function syncManhwaFeeds() {
 
             querySnapshot.forEach((doc) => {
                 const manhwaData = doc.data();
+                if (!manhwaData) return;
+
                 const rawTitle = manhwaData.title || '';
                 const cleanTitle = rawTitle.toLowerCase().trim();
                 const chapterNum = manhwaData.last_scanned_chapter || 0;
