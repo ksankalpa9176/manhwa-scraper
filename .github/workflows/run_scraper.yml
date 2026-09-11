@@ -2,8 +2,18 @@ name: Run Manhwa Scraper
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Triggers automatically every 6 hours
-  workflow_dispatch: # Allows clicking a button to run it manually anytime
+    # Triggers automatically every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'
+  # Allows triggering manually from GitHub Actions UI or directly from your Web App
+  workflow_dispatch:
+    inputs:
+      trigger_source:
+        description: 'Source of manual trigger'
+        required: false
+        default: 'Web App / Manual'
+
+permissions:
+  contents: read
 
 jobs:
   scrape:
@@ -20,21 +30,28 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install Libraries
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 firebase-admin
 
-      - name: Verify Firebase Secret
+      - name: Write Firebase Key from GitHub Secret
         env:
-          FIREBASE_SECRET: ${{ secrets.FIREBASE_JSON_SECRET }}
+          FIREBASE_KEY_CONTENT: ${{ secrets.FIREBASE_JSON_SECRET }}
         run: |
-          if [ -z "$FIREBASE_SECRET" ]; then
-            echo "::error::FIREBASE_JSON_SECRET is missing! Add it in Repo Settings > Secrets and variables > Actions"
+          if [ -z "$FIREBASE_KEY_CONTENT" ]; then
+            echo "::error::FIREBASE_JSON_SECRET is not set! Please add it in Repo Settings -> Secrets -> Actions."
             exit 1
           fi
+          echo "$FIREBASE_KEY_CONTENT" > firebase-key.json
 
       - name: Run Scraper Script
         env:
           FIREBASE_JSON_SECRET: ${{ secrets.FIREBASE_JSON_SECRET }}
-        run: python scraper.py
+        run: |
+          python scraper.py
+
+      - name: Clean up Credentials
+        if: always()
+        run: |
+          rm -f firebase-key.json
