@@ -3,123 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manhwa Personal Tracker Hub</title>
+    <title>Manhwa Tracker Dashboard</title>
     
+    <!-- Link to your clean CSS file -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Core Firebase Compatibility SDKs loaded via cloud CDN nodes -->
     <script src="https://gstatic.com"></script>
     <script src="https://gstatic.com"></script>
-    
-    <style>
-        body {
-            background-color: #0F0F12;
-            color: #FFFFFF;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-            margin: 0;
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            width: 100%;
-            max-width: 900px;
-        }
-        .header {
-            text-align: center;
-            padding: 20px;
-            font-size: 24px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            margin-bottom: 24px;
-        }
-        .track-pane {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            padding: 16px;
-            border-radius: 14px;
-            display: flex;
-            gap: 12px;
-            margin-bottom: 32px;
-        }
-        input {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.06);
-            border: none;
-            padding: 14px 16px;
-            border-radius: 10px;
-            color: white;
-            font-size: 16px;
-            outline: none;
-        }
-        button {
-            background: #9D4EDD;
-            color: white;
-            border: none;
-            padding: 14px 24px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 15px;
-            cursor: pointer;
-        }
-        .layout-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-        }
-        @media (max-width: 768px) {
-            .layout-grid { grid-template-columns: 1fr; }
-        }
-        .column-card {
-            background: rgba(255, 255, 255, 0.02);
-            padding: 20px;
-            border-radius: 18px;
-            border: 1px solid rgba(255, 255, 255, 0.04);
-        }
-        .column-heading {
-            font-size: 12px;
-            font-weight: 700;
-            color: #E0AAFF;
-            text-transform: uppercase;
-            margin-bottom: 16px;
-            letter-spacing: 1px;
-            opacity: 0.8;
-        }
-        .manhwa-row-card {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            padding: 16px;
-            border-radius: 14px;
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: transform 0.2s, background 0.2s;
-        }
-        .manhwa-row-card:hover {
-            background: rgba(255, 255, 255, 0.08);
-            transform: translateY(-2px);
-        }
-        .card-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .manga-name { font-weight: 600; font-size: 16px; }
-        .manga-chapter-badge { color: #C77DFF; font-size: 14px; }
-        .ios-arrow { color: rgba(255, 255, 255, 0.4); font-size: 14px; cursor: pointer; }
-    </style>
 </head>
 <body>
+
     <div class="container">
         <div class="header">📚 Manhwa Personal Hub</div>
+
+        <!-- Track Input Bar Pane -->
         <div class="track-pane">
             <input type="text" id="manhwaTitleField" placeholder="Enter Manhwa Title Exactly...">
             <button onclick="saveWatchlistEntry()">Track Title</button>
         </div>
+
+        <!-- Double Column Data Feed Grid -->
         <div class="layout-grid">
             <div class="column-card">
                 <div class="column-heading">My Feed (Watchlist Items)</div>
@@ -132,94 +36,7 @@
         </div>
     </div>
 
-    <script>
-        // === 1. CONFIGURATION: REPLACE THIS BLOCK WITH YOUR FIREBASE WEB PROJECT KEYS ===
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-        const firebaseConfig = {
-           apiKey: "AIzaSyAcEHMf7R8caqyzcmtpyduAFUUW90HHzTQ",
-           authDomain: "manhwa-tracker-be510.firebaseapp.com",
-           projectId: "manhwa-tracker-be510",
-           storageBucket: "manhwa-tracker-be510.firebasestorage.app",
-           messagingSenderId: "762652201419",
-           appId: "1:762652201419:web:de50bef07b09fa1d43a64e",
-           measurementId: "G-3YGH9RWWV8"
-         };
-
-        firebase.initializeApp(firebaseConfig);
-        const firestoreDb = firebase.firestore();
-        let activeWatchlistSet = new Set();
-
-        async function saveWatchlistEntry() {
-            const inputField = document.getElementById('manhwaTitleField');
-            const titleValue = inputField.value.trim();
-            if (titleValue) {
-                await firestoreDb.collection('watchlist').add({
-                    title: titleValue,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                inputField.value = '';
-                alert('Title added to watchlist!');
-            }
-        }
-
-        firestoreDb.collection('watchlist').onSnapshot((watchlistSnapshot) => {
-        activeWatchlistSet.clear();
-        watchlistSnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.title) {
-            activeWatchlistSet.add(data.title.toLowerCase().trim());
-             }
-           });
-         syncManhwaFeeds();
-         });
-
-
-        function syncManhwaFeeds() {
-            firestoreDb.collection('manhwa')
-                .orderBy('discovered_at', 'desc')
-                .onSnapshot((querySnapshot) => {
-                    const watchlistContainer = document.getElementById('watchlistFeedPanel');
-                    const discoveryContainer = document.getElementById('discoveryFeedPanel');
-                    watchlistContainer.innerHTML = '';
-                    discoveryContainer.innerHTML = '';
-                    let watchlistCount = 0;
-                    let discoveryCount = 0;
-
-                    querySnapshot.forEach((doc) => {
-                        const manhwaData = doc.data();
-                        const rawTitle = manhwaData.title || '';
-                        const cleanTitle = rawTitle.toLowerCase().trim();
-                        const chapterNum = manhwaData.last_scanned_chapter || 0;
-
-                        const cardItem = document.createElement('div');
-                        cardItem.className = 'manhwa-row-card';
-                        cardItem.innerHTML = `
-                            <div class="card-meta">
-                                <span class="manga-name">${rawTitle}</span>
-                                <span class="manga-chapter-badge">Chapter ${chapterNum}</span>
-                            </div>
-                            <span class="ios-arrow">➔</span>
-                        `;
-                        cardItem.onclick = () => {
-                            window.open(`https://arenascan.com{encodeURIComponent(rawTitle)}`, '_blank');
-                        };
-
-                        if (activeWatchlistSet.has(cleanTitle)) {
-                            watchlistContainer.appendChild(cardItem);
-                            watchlistCount++;
-                        } 
-                        if (chapterNum <= 10) {
-                            const discoveryCard = cardItem.cloneNode(true);
-                            discoveryCard.onclick = cardItem.onclick;
-                            discoveryContainer.appendChild(discoveryCard);
-                            discoveryCount++;
-                        }
-                    });
-
-                    if (watchlistCount === 0) watchlistContainer.innerHTML = '<div style="color:gray;text-align:center;">Feed empty.</div>';
-                    if (discoveryCount === 0) discoveryContainer.innerHTML = '<div style="color:gray;text-align:center;">No new series.</div>';
-                });
-        }
-    </script>
+    <!-- Link to your clean JavaScript logic file -->
+    <script src="app.js"></script>
 </body>
 </html>
